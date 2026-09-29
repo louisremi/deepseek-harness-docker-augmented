@@ -1,0 +1,5 @@
+*
+!tools/npm/package.json
+!tools/npm/package-lock.json
+!tools/python/requirements.txt
+!scripts/write-manifest.sh

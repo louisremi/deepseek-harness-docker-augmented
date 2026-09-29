@@ -1,0 +1,27 @@
+name: CI failure to issue
+
+# Turns a red CI run on main, a Renovate branch or an agent main-fix branch
+# into an `agent-fix` issue that maintainer-agent picks up, and closes it again
+# once CI on that branch is green (reusable workflow from maintainer-agent).
+# The agent only pushes to branches listed in .github/maintainer-agent.yml
+# (`bot_branches`); a red main gets a maintainer-agent/main-fix-<n> branch and
+# a draft PR. Nothing it writes merges without a maintainer's review.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  ci-failure:
+    if: github.event.workflow_run.head_repository.full_name == github.repository
+    uses: louisremi/maintainer-agent/.github/workflows/ci-failure-issue.yml@232fecaa8ebc196c28dbc637651fb2f24ff665c2 # v0.1.1
+    with:
+      branches: "main renovate/* maintainer-agent/main-fix-*"
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      actions: read

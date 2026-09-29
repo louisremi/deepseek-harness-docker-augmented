@@ -1,0 +1,36 @@
+{
+  "name": "deepseek-harness-dev-tools",
+  "private": true,
+  "description": "Global developer CLIs baked into louisremi/deepseek-harness-dev (HolyClaude slim parity). Installed with `npm ci` into /opt/devtools/npm; bins are appended to PATH.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.282",
+    "@google/gemini-cli": "0.61.0",
+    "@openai/codex": "0.157.0",
+    "concurrently": "10.0.5",
+    "dotenv-cli": "11.0.0",
+    "esbuild": "0.28.2",
+    "eslint": "10.11.0",
+    "nodemon": "3.1.14",
+    "playwright": "1.63.0",
+    "prettier": "3.9.9",
+    "serve": "14.2.6",
+    "task-master-ai": "0.43.1",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.1"
+  },
+  "allowScripts": {
+    "@anthropic-ai/claude-code": true,
+    "esbuild": true,
+    "node-pty": true,
+    "protobufjs": true,
+    "tree-sitter-bash": true,
+    "@github/keytar": false,
+    "fsevents": false,
+    "tldjs": false
+  }
+}

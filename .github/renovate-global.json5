@@ -1,0 +1,21 @@
+// Global (self-hosted-only) Renovate options, loaded by
+// .github/workflows/renovate.yml via RENOVATE_CONFIG_FILE. Repository
+// behaviour lives in /renovate.json5.
+{
+  platform: 'github',
+  repositories: ['louisremi/deepseek-harness-docker-dev'],
+  onboarding: false,
+  requireConfig: 'required',
+  gitAuthor: 'renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>',
+  // Renovate authenticates as our own GitHub App (renovate.yml). With an app
+  // token it would default to API commits authored by the app, whose email the
+  // review gate (ci.yml bot_authors) and .github/maintainer-agent.yml don't
+  // list. Plain git commits keep the gitAuthor above. PR authorship is
+  // checked separately through vars.RENOVATE_PR_AUTHOR (<app-slug>[bot]).
+  platformCommit: 'disabled',
+  // Only the checksum refresher may run after an upgrade, and only with a
+  // plain depName argument (no shell metacharacters can reach it).
+  allowedCommands: ['^python3 scripts/refresh-checksums\\.py --tool [A-Za-z0-9._/-]+$'],
+  // Docker Hub lookups for the base image, anonymous is enough but rate-limited;
+  // the workflow passes Docker Hub credentials when available.
+}

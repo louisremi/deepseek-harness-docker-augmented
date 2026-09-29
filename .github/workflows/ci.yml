@@ -1,0 +1,258 @@
+name: CI
+
+# validate -> build+smoke (amd64, arm64, native runners) -> publish (main only)
+#
+# PRs (Renovate bumps, agent fixes): build and smoke both architectures, push
+# nothing. Branch protection requires `review-gate / gate`, `validate`,
+# `build (amd64)` and `build (arm64)`; GitHub auto-merges green Renovate PRs,
+# but anything maintainer-agent may have touched waits for a human at
+# `review-gate` (see the job below).
+#
+# main / weekly schedule / manual dispatch: the same, then push each
+# architecture by digest and publish a multi-arch manifest as
+# louisremi/deepseek-harness-dev:<upstream-tag>-dev.<N> and :latest.
+# Scheduled runs publish only if /opt/devtools/MANIFEST.txt differs from the
+# current :latest (e.g. Debian security updates), so no empty tags appear.
+#
+# Jobs always run (so required checks never hang on docs-only PRs); the image
+# build is skipped when no file that ends up in the image changed.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      force_publish:
+        description: Publish even if the image manifest is unchanged
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: docker.io/louisremi/deepseek-harness-dev
+
+jobs:
+  # Human-review gate from maintainer-agent (reusable workflow). Only a pure
+  # Renovate bump skips review; anything the agent (or anyone else) wrote
+  # waits for a maintainer to approve the `agent-review` environment.
+  # Required check: `review-gate / gate`. See
+  # https://github.com/louisremi/maintainer-agent#watching-a-repository
+  review-gate:
+    if: github.event_name == 'pull_request'
+    uses: louisremi/maintainer-agent/.github/workflows/review-gate.yml@232fecaa8ebc196c28dbc637651fb2f24ff665c2 # v0.1.1
+    with:
+      bot_branches: "renovate/*"
+      bot_authors: "29139614+renovate[bot]@users.noreply.github.com"
+      bot_pr_author: ${{ vars.RENOVATE_PR_AUTHOR }}
+      ci_workflow: ci.yml
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      image_changed: ${{ steps.changes.outputs.image_changed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Did anything that goes into the image change?
+        id: changes
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" != "pull_request" && "${{ github.event_name }}" != "push" ]]; then
+            echo "image_changed=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "image_changed=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files="$(git diff --name-only "${base}" HEAD)"
+          echo "${files}"
+          if grep -Eq '^(Dockerfile|\.dockerignore|tools/|scripts/|\.github/workflows/ci\.yml)' <<<"${files}"; then
+            echo "image_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "image_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install hadolint
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/hadolint \
+            https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-linux-x86_64
+          sudo chmod +x /usr/local/bin/hadolint
+          hadolint --version
+      - name: Static checks (online)
+        run: scripts/static-check.sh --online
+
+  build:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    name: build (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      ENABLED: ${{ needs.validate.outputs.image_changed == 'true' }}
+      PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.validate.outputs.image_changed == 'true' }}
+    steps:
+      - name: Skip (no image inputs changed)
+        if: env.ENABLED != 'true'
+        run: echo "No Dockerfile/tools/scripts change; image build skipped."
+
+      - uses: actions/checkout@v7
+        if: env.ENABLED == 'true'
+
+      # Ubuntu 24.04 runners restrict unprivileged user namespaces through
+      # AppArmor, which would make the bwrap smoke checks fail for reasons
+      # unrelated to the image. Production (Unraid) has no such restriction.
+      - name: Allow unprivileged user namespaces (bwrap smoke test)
+        if: env.ENABLED == 'true'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - uses: docker/setup-buildx-action@v4
+        if: env.ENABLED == 'true'
+
+      # Authenticated pulls avoid Docker Hub rate limits. Secrets are not
+      # available to fork PRs; the build still works anonymously there.
+      - name: Log in to Docker Hub
+        if: env.ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build (load for smoke test)
+        if: env.ENABLED == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          pull: true
+          tags: deepseek-harness-dev:ci
+          build-args: |
+            IMAGE_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.arch }},mode=max
+
+      - name: Smoke test
+        if: env.ENABLED == 'true'
+        run: scripts/smoke.sh deepseek-harness-dev:ci
+
+      - name: Extract image manifest
+        if: env.ENABLED == 'true'
+        run: |
+          mkdir -p out
+          docker run --rm --entrypoint cat deepseek-harness-dev:ci /opt/devtools/MANIFEST.txt > "out/manifest-${{ matrix.arch }}.txt"
+
+      - name: Push by digest
+        id: push
+        if: env.PUBLISH == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          build-args: |
+            IMAGE_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Record digest
+        if: env.PUBLISH == 'true'
+        run: echo "${{ steps.push.outputs.digest }}" > "out/digest-${{ matrix.arch }}"
+
+      - uses: actions/upload-artifact@v7
+        if: env.ENABLED == 'true'
+        with:
+          name: build-${{ matrix.arch }}
+          path: out/
+          retention-days: 7
+
+  publish:
+    needs: [validate, build]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.validate.outputs.image_changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    concurrency:
+      group: publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: build-*
+          path: artifacts
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Decide whether to publish
+        id: decide
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" != "schedule" || "${{ inputs.force_publish }}" == "true" ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          changed=false
+          for arch in amd64 arm64; do
+            if ! docker run --rm --platform "linux/${arch}" --entrypoint cat "${IMAGE}:latest" \
+                /opt/devtools/MANIFEST.txt > "current-${arch}.txt" 2>/dev/null; then
+              changed=true; continue
+            fi
+            if ! diff -u "current-${arch}.txt" "artifacts/manifest-${arch}.txt" > "diff-${arch}.txt"; then
+              changed=true
+              echo "::group::manifest diff (${arch})"; cat "diff-${arch}.txt"; echo "::endgroup::"
+            fi
+          done
+          echo "publish=${changed}" >> "$GITHUB_OUTPUT"
+          [[ "${changed}" == true ]] || echo "Image contents unchanged since :latest; skipping publish." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create and push multi-arch tags
+        if: steps.decide.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          tag="$(scripts/next-tag.sh louisremi/deepseek-harness-dev)"
+          echo "Publishing ${IMAGE}:${tag} and :latest"
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${tag}" \
+            --tag "${IMAGE}:latest" \
+            "${IMAGE}@$(cat artifacts/digest-amd64)" \
+            "${IMAGE}@$(cat artifacts/digest-arm64)"
+          docker buildx imagetools inspect "${IMAGE}:${tag}"
+          {
+            echo "### Published \`${IMAGE}:${tag}\`"
+            echo
+            echo "Also tagged \`latest\`. Platforms: linux/amd64, linux/arm64."
+          } >> "$GITHUB_STEP_SUMMARY"

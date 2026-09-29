@@ -1,0 +1,48 @@
+# Example service for louisremi/deepseek-harness-dev. Mirrors upstream's
+# hardened compose.yaml and adds the two security_opt values bubblewrap needs.
+#
+#   DSH_WORKSPACE=/absolute/path/to/project docker compose -f compose.example.yaml up -d
+#   docker compose -f compose.example.yaml logs deepseek-harness | grep 'dsh web:'
+services:
+  deepseek-harness:
+    image: docker.io/louisremi/deepseek-harness-dev:${DSH_DEV_TAG:-latest}
+    ports:
+      - "127.0.0.1:${DSH_PORT:-3080}:3080"
+      - "127.0.0.1:${DSH_DESKTOP_PORT:-6080}:6080"
+    environment:
+      DSH_TELEMETRY_DISABLED: "1"
+      DSH_DESKTOP_ENABLED: "1"
+      DSH_DESKTOP_PUBLIC_PORT: ${DSH_DESKTOP_PORT:-6080}
+      HOME: /workspace
+    volumes:
+      - dsh-home:/home/node/.dsh
+      - ${DSH_WORKSPACE:-dsh-workspace}:/workspace
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=512m
+    shm_size: "1gb"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      # bubblewrap (the dsh sandbox runner) needs both of these. Established by
+      # bisection; capabilities are irrelevant (SYS_ADMIN is neither necessary
+      # nor sufficient), so cap_drop ALL stays.
+      - seccomp=unconfined      # Docker's default profile refuses bwrap's namespace syscalls
+      - systempaths=unconfined  # Docker masks /proc; bwrap mounts a fresh one in its namespace
+    pids_limit: 1024
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3080/').then(r => { if (r.status !== 401) process.exit(1) }).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 3s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  dsh-home:
+  dsh-workspace:

@@ -1,0 +1,59 @@
+name: Renovate
+
+# Self-hosted Renovate: detects new upstream DSH images and new versions of
+# every bundled tool, and opens one PR per update (auto-merged when CI passes).
+# It also maintains the "Dependency Dashboard (Renovate)" issue.
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      log_level:
+        description: Renovate log level
+        type: choice
+        options: [info, debug]
+        default: info
+      dry_run:
+        description: "Dry run (lookup only, no branches/PRs)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  renovate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      # Renovate runs as a dedicated, private GitHub App installed on this
+      # repository only, so its PRs are opened by "<app-slug>[bot]" (which the
+      # review gate checks via vars.RENOVATE_PR_AUTHOR) and there is no
+      # long-lived PAT. The token lives one hour. Unlike GITHUB_TOKEN, an app
+      # token's pushes trigger CI, and it may bump actions (workflows: write).
+      - name: Mint Renovate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3.2.0
+        with:
+          client-id: ${{ vars.RENOVATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+
+      - name: Run Renovate
+        uses: renovatebot/github-action@v46.3.6
+        with:
+          configurationFile: .github/renovate-global.json5
+          token: ${{ steps.app-token.outputs.token }}
+          renovate-version: "44"
+        env:
+          LOG_LEVEL: ${{ inputs.log_level || 'info' }}
+          RENOVATE_DRY_RUN: ${{ inputs.dry_run && 'lookup' || '' }}
+          # Authenticated Docker Hub lookups avoid anonymous rate limits.
+          RENOVATE_HOST_RULES: >-
+            [{"matchHost":"docker.io","hostType":"docker","username":"${{ secrets.DOCKERHUB_USERNAME }}","password":"${{ secrets.DOCKERHUB_TOKEN }}"}]

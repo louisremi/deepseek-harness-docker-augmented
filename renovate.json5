@@ -1,0 +1,135 @@
+// Renovate repository config for louisremi/deepseek-harness-docker-dev.
+//
+// Renovate (self-hosted, .github/workflows/renovate.yml) is the update
+// detector: it watches the upstream DSH image and every tool baked into our
+// image, opens one PR per update, and GitHub auto-merges it once CI is green.
+// Global-only options (allowedCommands, ...) live in .github/renovate-global.json5.
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: ['config:recommended', ':dependencyDashboard', ':semanticCommitTypeAll(chore)'],
+
+  dependencyDashboardTitle: 'Dependency Dashboard (Renovate)',
+  // Keep the issue agent away from the dashboard.
+  dependencyDashboardLabels: ['no-triage'],
+  labels: ['renovate'],
+  timezone: 'Europe/Paris',
+  prHourlyLimit: 0,
+  prConcurrentLimit: 10,
+  rebaseWhen: 'behind-base-branch',
+
+  // Green CI + branch protection is the gate; GitHub merges natively.
+  automerge: true,
+  automergeType: 'pr',
+  platformAutomerge: true,
+  automergeStrategy: 'squash',
+
+  // Supply-chain buffer for third-party tools; upstream DSH has none (below).
+  minimumReleaseAge: '2 days',
+  internalChecksFilter: 'strict',
+
+  enabledManagers: ['custom.regex', 'npm', 'pip_requirements', 'github-actions'],
+
+  customManagers: [
+    {
+      // `# renovate: datasource=<ds> depName=<name>` on the line above an
+      // `ARG NAME=<value>[@sha256:<digest>]`. Versioning / tag extraction per
+      // datasource is set in packageRules below.
+      customType: 'regex',
+      description: 'Dockerfile ARG pins annotated with a renovate comment',
+      managerFilePatterns: ['/(^|/)Dockerfile$/'],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>[a-z.-]+) depName=(?<depName>\\S+)\\s+ARG [A-Z0-9_]+=(?:docker\\.io/[^:\\s]+:)?(?<currentValue>[^@\\s]+)(?:@(?<currentDigest>sha256:[0-9a-f]{64}))?\\s',
+      ],
+      versioningTemplate: 'semver-coerced',
+    },
+  ],
+
+  customDatasources: {
+    // Cursor publishes no release feed; the version is embedded in its
+    // official install script as downloads.cursor.com/lab/<version>/...
+    cursor: {
+      defaultRegistryUrlTemplate: 'https://cursor.com/install',
+      format: 'plain',
+    },
+  },
+
+  packageRules: [
+    {
+      description: 'Upstream DSH image: follow every revision incl. alpha/rc, only the plain variant, pinned by digest, no delay',
+      matchDatasources: ['docker'],
+      matchPackageNames: ['runzhliu/deepseek-harness'],
+      versioning: 'regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:-(?<prerelease>(?:alpha|beta|rc)\\.\\d+))?-r(?<build>\\d+)$',
+      ignoreUnstable: false,
+      respectLatest: false,
+      pinDigests: true,
+      minimumReleaseAge: null,
+      labels: ['renovate', 'upstream'],
+      commitMessageTopic: 'upstream DSH image',
+      // Also catches upstream re-pushing the same tag (digest-only PR).
+      prBodyNotes: [
+        'Upstream bump. CI rebuilds both patches (bubblewrap, SameSite=Lax) and fails loudly if either guard no longer applies. See docs/agent/bump-upstream.md.',
+      ],
+    },
+    {
+      description: 'GitHub release tags are v-prefixed',
+      matchDatasources: ['github-releases'],
+      extractVersion: '^v(?<version>\\d.*)$',
+    },
+    {
+      description: 'Cursor agent: parse <YYYY.MM.DD>-<sha> out of the official install script',
+      matchDatasources: ['custom.cursor'],
+      extractVersion: 'downloads\\.cursor\\.com/lab/(?<version>\\d{4}\\.\\d{2}\\.\\d{2}-[0-9a-f]+)/',
+      versioning: 'regex:^(?<major>\\d{4})\\.(?<minor>\\d{2})\\.(?<patch>\\d{2})-[0-9a-f]+$',
+      // The install script carries no release timestamp, so an age gate would
+      // hold every release forever; the version string itself is dated.
+      minimumReleaseAge: null,
+    },
+    {
+      description: 'The engines field documents the base image runtime; never bump it',
+      matchManagers: ['npm'],
+      matchDepTypes: ['engines'],
+      enabled: false,
+    },
+    {
+      description: 'Release binaries: refresh per-arch sha256 ARGs in the same commit',
+      matchManagers: ['custom.regex'],
+      matchFileNames: ['Dockerfile'],
+      matchDatasources: ['github-releases', 'custom.cursor'],
+      postUpgradeTasks: {
+        commands: ['python3 scripts/refresh-checksums.py --tool {{{depName}}}'],
+        fileFilters: ['Dockerfile'],
+        executionMode: 'update',
+        installTools: {python: {}},
+      },
+    },
+    {
+      description: 'Python libs: TypeScript-style exact pins, grouped weekly to limit rebuild churn',
+      matchManagers: ['pip_requirements'],
+      groupName: 'python libraries',
+      schedule: ['* 0-5 * * 1'],
+    },
+    {
+      description: 'npm: keep exact pins; AI CLIs move fast, give each its own PR',
+      matchManagers: ['npm'],
+      rangeStrategy: 'pin',
+    },
+    {
+      description: 'npm dev tooling (non AI CLIs): group weekly',
+      matchManagers: ['npm'],
+      matchPackageNames: ['!@anthropic-ai/claude-code', '!@google/gemini-cli', '!@openai/codex', '!task-master-ai'],
+      groupName: 'npm dev tooling',
+      schedule: ['* 0-5 * * 1'],
+    },
+    {
+      description: 'GitHub Actions: group, weekly',
+      matchManagers: ['github-actions'],
+      groupName: 'github actions',
+      schedule: ['* 0-5 * * 1'],
+    },
+  ],
+
+  lockFileMaintenance: {
+    enabled: true,
+    schedule: ['* 0-5 * * 1'],
+  },
+}
