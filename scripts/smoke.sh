@@ -33,6 +33,7 @@ hardening=(
   --security-opt no-new-privileges:true
   --security-opt seccomp=unconfined
   --security-opt systempaths=unconfined
+  --security-opt apparmor=unconfined
 )
 
 run() { docker run --rm "${hardening[@]}" --entrypoint bash "${image}" -ec "$1"; }

@@ -22,8 +22,9 @@
 #
 # bwrap is installed WITHOUT the setuid bit on purpose: the runtime keeps
 # `no-new-privileges`, which neutralises setuid anyway. It works unprivileged
-# via user namespaces, which needs two compose security_opt values
-# (seccomp=unconfined, systempaths=unconfined); see compose.example.yaml.
+# via user namespaces, which needs compose security_opt values
+# (seccomp=unconfined, systempaths=unconfined, and apparmor=unconfined on
+# AppArmor hosts); see compose.example.yaml.
 #
 # Patch 2 -- SameSite=Lax
 #

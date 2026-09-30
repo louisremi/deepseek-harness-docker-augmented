@@ -1,5 +1,5 @@
 # Example service for louisremi/deepseek-harness-dev. Mirrors upstream's
-# hardened compose.yaml and adds the two security_opt values bubblewrap needs.
+# hardened compose.yaml and adds the security_opt values bubblewrap needs.
 #
 #   DSH_WORKSPACE=/absolute/path/to/project docker compose -f compose.example.yaml up -d
 #   docker compose -f compose.example.yaml logs deepseek-harness | grep 'dsh web:'
@@ -25,11 +25,15 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-      # bubblewrap (the dsh sandbox runner) needs both of these. Established by
+      # bubblewrap (the dsh sandbox runner) needs these. Established by
       # bisection; capabilities are irrelevant (SYS_ADMIN is neither necessary
       # nor sufficient), so cap_drop ALL stays.
       - seccomp=unconfined      # Docker's default profile refuses bwrap's namespace syscalls
       - systempaths=unconfined  # Docker masks /proc; bwrap mounts a fresh one in its namespace
+      # AppArmor hosts only (Ubuntu, Debian with AppArmor); a no-op elsewhere.
+      # docker-default forbids the mount calls bwrap makes. On Ubuntu 23.10+ also
+      # set the host sysctl kernel.apparmor_restrict_unprivileged_userns=0.
+      - apparmor=unconfined
     pids_limit: 1024
     restart: unless-stopped
     healthcheck:

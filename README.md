@@ -42,12 +42,12 @@ docker compose -f compose.example.yaml logs deepseek-harness | grep 'dsh web:'
 bubblewrap needs `security_opt: [seccomp=unconfined, systempaths=unconfined]`,
 which is already in `compose.example.yaml`. Capabilities stay dropped.
 
-**Host requirement:** on Ubuntu 23.10+ hosts (and derivatives), AppArmor
-blocks unprivileged user namespaces by default, and bwrap fails with
-`Failed to make / slave: Permission denied`. Check it with
-`sysctl kernel.apparmor_restrict_unprivileged_userns`; if it prints `1`, set it
-to `0` (`/etc/sysctl.d/60-userns.conf`), as CI does. Unraid, Debian, Fedora
-and most other hosts don't have this restriction.
+**AppArmor hosts** (Ubuntu, some Debian setups): Docker's `docker-default`
+profile blocks bwrap's mounts (`bwrap: Failed to make / slave: Permission
+denied`), so the example also sets `apparmor=unconfined` (a no-op on hosts
+without AppArmor, like Unraid). On Ubuntu 23.10+ also set the host sysctl
+`kernel.apparmor_restrict_unprivileged_userns=0`
+(`/etc/sysctl.d/60-userns.conf`), as CI does.
 
 **Tags:** `<upstream-tag>-dev.<N>` (e.g. `0.1.7-rc.2-r1-dev.1`) and `latest`.
 Images are published for linux/amd64 and linux/arm64.
