@@ -16,6 +16,7 @@ volume="dsh-dev-smoke-home-${suffix}"
 cookie_jar="$(mktemp "${TMPDIR:-/tmp}/dsh-dev-smoke-cookie.XXXXXX")"
 headers="$(mktemp "${TMPDIR:-/tmp}/dsh-dev-smoke-headers.XXXXXX")"
 
+# shellcheck disable=SC2317  # invoked by the trap (shellcheck < 0.10 misses it)
 cleanup() {
   docker container rm --force "${container}" >/dev/null 2>&1 || true
   docker volume rm "${volume}" >/dev/null 2>&1 || true
