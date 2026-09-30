@@ -34,6 +34,7 @@ and arm64 on native runners, smoke-tests them, and publishes
 | `scripts/write-manifest.sh` | Produces `/opt/devtools/MANIFEST.txt`, the inventory used to skip no-op weekly publishes. |
 | `scripts/next-tag.sh` | Computes the next `<upstream>-dev.<N>` tag. |
 | `renovate.json5`, `.github/renovate-global.json5` | Update detection. |
+| `SETUP.md` | One-time repository setup: secrets, Renovate GitHub App, branch protection, environments. |
 | `.github/workflows/` | `ci.yml` (review gate, build, smoke, publish), `renovate.yml`, `failure-to-issue.yml` (the last two jobs call maintainer-agent's reusable workflows). |
 | `.github/maintainer-agent.yml` | How [maintainer-agent](https://github.com/louisremi/maintainer-agent) behaves here: playbooks, checks, allowed hosts, bot branches. |
 | `docs/agent/` | Playbooks for the issue agent. |
