@@ -4,7 +4,7 @@
 # dependency) must ship a manylinux wheel for cp313 on x86_64 and aarch64.
 aiohttp==3.14.3
 aiomqtt==2.5.1
-apprise==1.13.1
+apprise==2.0.0
 bandit==1.9.4
 beautifulsoup4==4.15.0
 click==8.5.0
