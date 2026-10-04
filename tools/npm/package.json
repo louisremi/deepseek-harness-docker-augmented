@@ -13,7 +13,7 @@
     "concurrently": "10.0.5",
     "dotenv-cli": "11.0.0",
     "esbuild": "0.28.2",
-    "eslint": "10.11.0",
+    "eslint": "10.12.0",
     "nodemon": "3.1.14",
     "playwright": "1.63.0",
     "prettier": "3.9.9",
@@ -21,7 +21,7 @@
     "task-master-ai": "0.43.1",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
-    "vite": "8.3.1"
+    "vite": "8.3.2"
   },
   "allowScripts": {
     "@anthropic-ai/claude-code": true,
