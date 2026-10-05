@@ -143,6 +143,16 @@ pass "python venv: pip check clean, all libraries import at pinned versions"
 run 'test -s /opt/devtools/MANIFEST.txt && grep -q "^base=" /opt/devtools/MANIFEST.txt' || fail "MANIFEST.txt"
 pass "MANIFEST.txt present"
 
+# The dsh-docker-adapter plugin is baked into the image's own web profile (no
+# volume mounted here, so this reads the image, not a seeded volume).
+adapter_v="$(arg DSH_DOCKER_ADAPTER_VERSION)"
+run "
+  p=\"\${DSH_HOME:-/home/node/.dsh}/profiles/web\"
+  grep -qF '\"@louisremi/dsh-docker-adapter\": \"${adapter_v}\"' \"\$p/package.json\"
+  test \"\$(node -p 'require(\"'\"\$p\"'/node_modules/@louisremi/dsh-docker-adapter/package.json\").version')\" = '${adapter_v}'
+" || fail "dsh-docker-adapter ${adapter_v} is not baked into the web profile"
+pass "dsh-docker-adapter ${adapter_v} baked into the web profile"
+
 # --- 5. dsh web boots and issues a SameSite=Lax cookie ----------------------
 docker volume create "${volume}" >/dev/null
 docker run --detach --name "${container}" \
@@ -168,6 +178,14 @@ for _ in $(seq 1 60); do
     code="$(curl --silent --output /dev/null --write-out '%{http_code}' --cookie "${cookie_jar}" "http://127.0.0.1:${port}/")"
     [[ "${code}" == 200 ]] || fail "authenticated GET / returned ${code}"
     pass "dsh web: authenticated GET / returns 200"
+    # Runtime proof that the plugin loaded (from the volume Docker seeded from
+    # the image): its route answers 400 (missing path) once authenticated; with
+    # no plugin the route does not exist and dsh answers 404.
+    code="$(curl --silent --output /dev/null --write-out '%{http_code}' --cookie "${cookie_jar}" "http://127.0.0.1:${port}/api/download.file")"
+    [[ "${code}" == 400 ]] || fail "GET /api/download.file returned ${code}, expected 400 (dsh-docker-adapter not loaded?)"
+    code="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${port}/api/download.file")"
+    [[ "${code}" == 401 ]] || fail "unauthenticated GET /api/download.file returned ${code}, expected 401"
+    pass "dsh-docker-adapter loaded: /api/download.file is 401 unauthenticated, 400 authenticated"
     if docker logs "${container}" 2>&1 | grep -Eqi 'SANDBOX_UNAVAILABLE|failed to load plugin|plugin .* error'; then
       docker logs "${container}" >&2
       fail "dsh logged sandbox or plugin load errors"

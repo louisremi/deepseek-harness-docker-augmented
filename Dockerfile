@@ -212,8 +212,9 @@ RUN set -eux; \
 # under profiles/web. A *fresh* named volume mounted there (compose.example.yaml,
 # scripts/smoke.sh) is seeded by Docker from the image content, so new installs
 # get the plugin with no runtime network. A volume that already exists keeps the
-# profile it already has; add it once with:
-#   docker compose exec deepseek-harness dsh plugin --profile web add @louisremi/dsh-docker-adapter
+# profile it already has, so it keeps the plugin version it was seeded with
+# even when a later image bumps the ARG below; add or upgrade it there with:
+#   docker compose exec deepseek-harness dsh plugin --profile web add @louisremi/dsh-docker-adapter@latest
 # renovate: datasource=npm depName=@louisremi/dsh-docker-adapter
 ARG DSH_DOCKER_ADAPTER_VERSION=0.2.1
 USER node
