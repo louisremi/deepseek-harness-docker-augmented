@@ -16,6 +16,9 @@ It builds `docker.io/louisremi/deepseek-harness-dev`: the upstream
 3. HolyClaude "slim" **developer tooling**: apt tools, release binaries (gh,
    yq, fzf, atuin, cursor-agent), npm CLIs incl. Claude Code / Gemini / Codex /
    Task Master, and a Python library venv.
+4. **the `@louisremi/dsh-docker-adapter` dsh plugin**, pre-installed in the
+   `web` profile: "Show file location" is useless in a remote/container
+   setting, so the plugin swaps those buttons for **Download file**.
 
 Everything is pinned, and Renovate keeps every pin current. CI builds amd64
 and arm64 on native runners, smoke-tests them, and publishes
@@ -25,7 +28,7 @@ and arm64 on native runners, smoke-tests them, and publishes
 
 | Path | Purpose |
 | --- | --- |
-| `Dockerfile` | The image. Patches first, then tools. Every pin carries a `# renovate:` comment. |
+| `Dockerfile` | The image. Patches first, then tools, then the `web`-profile plugin. Every pin carries a `# renovate:` comment. |
 | `tools/npm/package.json` + `package-lock.json` | npm CLIs (exact versions) and the `allowScripts` install-script policy. |
 | `tools/python/requirements.txt` | Python libraries (exact `==` pins, wheels only). |
 | `scripts/refresh-checksums.py` | Recomputes per-arch sha256 ARGs for release binaries and cross-checks them against upstream-published checksums. |
