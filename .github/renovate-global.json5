@@ -3,7 +3,7 @@
 // behaviour lives in /renovate.json5.
 {
   platform: 'github',
-  repositories: ['louisremi/deepseek-harness-docker-dev'],
+  repositories: ['louisremi/deepseek-harness-docker-devkit'],
   onboarding: false,
   requireConfig: 'required',
   gitAuthor: 'renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>',

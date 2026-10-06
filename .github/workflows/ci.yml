@@ -10,7 +10,7 @@ name: CI
 #
 # main / weekly schedule / manual dispatch: the same, then push each
 # architecture by digest and publish a multi-arch manifest as
-# louisremi/deepseek-harness-dev:<upstream-tag>-dev.<N> and :latest.
+# louisremi/deepseek-harness-devkit:<upstream-tag>-dev.<N> and :latest.
 # Scheduled runs publish only if /opt/devtools/MANIFEST.txt differs from the
 # current :latest (e.g. Debian security updates), so no empty tags appear.
 #
@@ -38,7 +38,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  IMAGE: docker.io/louisremi/deepseek-harness-dev
+  IMAGE: docker.io/louisremi/deepseek-harness-devkit
 
 jobs:
   # Human-review gate from maintainer-agent (reusable workflow). Only a pure
@@ -159,7 +159,7 @@ jobs:
           platforms: linux/${{ matrix.arch }}
           load: true
           pull: true
-          tags: deepseek-harness-dev:ci
+          tags: deepseek-harness-devkit:ci
           build-args: |
             IMAGE_REVISION=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.arch }}
@@ -167,13 +167,13 @@ jobs:
 
       - name: Smoke test
         if: env.ENABLED == 'true'
-        run: scripts/smoke.sh deepseek-harness-dev:ci
+        run: scripts/smoke.sh deepseek-harness-devkit:ci
 
       - name: Extract image manifest
         if: env.ENABLED == 'true'
         run: |
           mkdir -p out
-          docker run --rm --entrypoint cat deepseek-harness-dev:ci /opt/devtools/MANIFEST.txt > "out/manifest-${{ matrix.arch }}.txt"
+          docker run --rm --entrypoint cat deepseek-harness-devkit:ci /opt/devtools/MANIFEST.txt > "out/manifest-${{ matrix.arch }}.txt"
 
       - name: Push by digest
         id: push
@@ -244,7 +244,7 @@ jobs:
         if: steps.decide.outputs.publish == 'true'
         run: |
           set -euo pipefail
-          tag="$(scripts/next-tag.sh louisremi/deepseek-harness-dev)"
+          tag="$(scripts/next-tag.sh louisremi/deepseek-harness-devkit)"
           echo "Publishing ${IMAGE}:${tag} and :latest"
           docker buildx imagetools create \
             --tag "${IMAGE}:${tag}" \

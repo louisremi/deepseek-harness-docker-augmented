@@ -10,7 +10,7 @@ export HOME=/tmp
 
 section() { printf '\n## %s\n' "$1"; }
 
-printf '# deepseek-harness-dev manifest\n'
+printf '# deepseek-harness-devkit manifest\n'
 printf 'base=%s\n' "${DSH_BASE_IMAGE:?DSH_BASE_IMAGE must be set}"
 printf 'arch=%s\n' "$(dpkg --print-architecture)"
 
