@@ -25,6 +25,22 @@ grep -o 'HttpOnly; SameSite=[A-Za-z]*' \
   /usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js
 printf 'bwrap=%s\n' "$(bwrap --version | awk '{print $2}')"
 
+section "dsh plugins (web profile)"
+# The plugin is baked into the Harness home at build time (see the Dockerfile's
+# "dsh plugin" step). $DSH_HOME wins over $HOME there; write-manifest.sh runs
+# with HOME=/tmp, so the fallback names the image's own home explicitly.
+dsh_home="${DSH_HOME:-/home/node/.dsh}"
+node -e '
+  const fs = require("node:fs");
+  const dep = "@louisremi/dsh-docker-adapter";
+  let v = "absent";
+  try {
+    const pkg = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    v = (pkg.dependencies && pkg.dependencies[dep]) || "absent";
+  } catch { /* profile not baked in */ }
+  console.log("dsh-docker-adapter=" + v);
+' "${dsh_home}/profiles/web/package.json"
+
 section "release binaries"
 printf 'gh=%s\n' "$(dpkg-query -W -f='${Version}' gh)"
 printf 'yq=%s\n' "$(yq --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"

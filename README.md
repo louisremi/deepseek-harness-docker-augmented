@@ -1,8 +1,9 @@
 # deepseek-harness-dev
 
 `docker.io/louisremi/deepseek-harness-dev`: [runzhliu/deepseek-harness](https://github.com/runzhliu/deepseek-harness-docker)
-(DeepSeek Harness Web UI, community container) plus two patches and a developer
-toolbox. It rebuilds itself whenever upstream or any bundled tool releases.
+(DeepSeek Harness Web UI, community container) plus two patches, a dsh plugin
+and a developer toolbox. It rebuilds itself whenever upstream or any bundled
+tool releases.
 
 ## What's added on top of upstream
 
@@ -15,6 +16,19 @@ toolbox. It rebuilds itself whenever upstream or any bundled tool releases.
 
 Both are applied with build-time guards, so an upstream change fails the build
 instead of silently shipping an unpatched image.
+
+**dsh plugin**
+
+| Plugin | Why |
+| --- | --- |
+| **[@louisremi/dsh-docker-adapter](https://github.com/louisremi/dsh-docker-adapter)** | The Harness runs somewhere else and you drive it from a browser, so "Show file location" opens a file manager nobody is using. The plugin replaces those buttons with **Download file** buttons, backed by an authenticated `GET /api/download.file`. |
+
+It is baked into the `web` profile with dsh's own `dsh plugin --profile web
+add`, so nothing is downloaded at runtime. Docker seeds a **new** `dsh-home`
+volume from the image; a volume that already exists keeps the profile it has,
+so it never picks up the plugin, or a newer plugin version shipped by a later
+image. On such a volume, add or upgrade it explicitly (needs outbound network):
+`docker compose exec deepseek-harness dsh plugin --profile web add @louisremi/dsh-docker-adapter@latest`.
 
 **Tools** (HolyClaude *slim* parity, minus its CloudCLI web UI, s6 and SSH/Mosh server)
 

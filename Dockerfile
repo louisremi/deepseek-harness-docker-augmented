@@ -3,7 +3,8 @@
 # louisremi/deepseek-harness-dev
 #
 # runzhliu/deepseek-harness + two local patches + HolyClaude "slim" developer
-# tooling. Every version below is pinned and kept current by Renovate (see
+# tooling + the dsh-docker-adapter plugin in the `web` profile. Every version
+# below is pinned and kept current by Renovate (see
 # renovate.json5); release binaries carry per-architecture sha256 values that
 # scripts/refresh-checksums.py refreshes in the same PR. Read AGENTS.md before
 # editing this file.
@@ -193,6 +194,39 @@ RUN set -eux; \
     /opt/devtools/venv/bin/pip install --no-cache-dir --disable-pip-version-check \
       --only-binary=:all: -r /opt/devtools/python/requirements.txt; \
     /opt/devtools/venv/bin/pip check
+
+# ---------- dsh plugin: docker adapter --------------------------------------
+# This image exists to run dsh somewhere else and drive it from a browser, so
+# "Show file location" points at a file manager nobody is sitting in front of.
+# @louisremi/dsh-docker-adapter replaces those buttons with "Download file"
+# buttons backed by an authenticated GET /api/download.file, which is what the
+# remote / container setting actually needs.
+#
+# It is installed with dsh's own plugin machinery (`dsh plugin --profile web
+# add`), as the `node` user, so the profile layout, the pnpm environment and
+# the file ownership are exactly what the same command produces at runtime.
+# The package has no dependencies and no install scripts, so the pinned version
+# below is the whole payload.
+#
+# It lands in the Harness home ($DSH_HOME, default $HOME/.dsh = /home/node/.dsh)
+# under profiles/web. A *fresh* named volume mounted there (compose.example.yaml,
+# scripts/smoke.sh) is seeded by Docker from the image content, so new installs
+# get the plugin with no runtime network. A volume that already exists keeps the
+# profile it already has, so it keeps the plugin version it was seeded with
+# even when a later image bumps the ARG below; add or upgrade it there with:
+#   docker compose exec deepseek-harness dsh plugin --profile web add @louisremi/dsh-docker-adapter@latest
+# renovate: datasource=npm depName=@louisremi/dsh-docker-adapter
+ARG DSH_DOCKER_ADAPTER_VERSION=0.2.1
+USER node
+RUN set -eux; \
+    dsh plugin --profile web add "@louisremi/dsh-docker-adapter@${DSH_DOCKER_ADAPTER_VERSION}"; \
+    home="${DSH_HOME:-${HOME}/.dsh}"; \
+    profile="${home}/profiles/web"; \
+    grep -qF "\"@louisremi/dsh-docker-adapter\": \"${DSH_DOCKER_ADAPTER_VERSION}\"" "${profile}/package.json" \
+      || { echo "PLUGIN GUARD: ${profile}/package.json does not pin @louisremi/dsh-docker-adapter@${DSH_DOCKER_ADAPTER_VERSION}" >&2; exit 1; }; \
+    node -e 'const m = require(process.argv[1]); const b = (m.dsh && m.dsh.profile && m.dsh.profile.bundles) || []; if (!b.includes("@louisremi/dsh-docker-adapter")) { console.error("PLUGIN GUARD: @louisremi/dsh-docker-adapter is not a selected bundle of " + process.argv[1] + ": " + JSON.stringify(b)); process.exit(1); }' "${profile}/package.json"; \
+    test -f "${profile}/node_modules/@louisremi/dsh-docker-adapter/cordis.patch.yml"
+USER root
 
 # Upstream binaries (dsh, pnpm, node, python3, chromium) keep precedence:
 # devtools are appended to PATH, never prepended.
