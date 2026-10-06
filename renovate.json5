@@ -1,4 +1,4 @@
-// Renovate repository config for louisremi/deepseek-harness-docker-dev.
+// Renovate repository config for louisremi/deepseek-harness-docker-devkit.
 //
 // Renovate (self-hosted, .github/workflows/renovate.yml) is the update
 // detector: it watches the upstream DSH image and every tool baked into our

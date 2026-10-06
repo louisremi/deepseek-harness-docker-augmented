@@ -1,4 +1,4 @@
-# AGENTS.md: working on deepseek-harness-docker-dev
+# AGENTS.md: working on deepseek-harness-docker-devkit
 
 Read this before changing anything. It applies to humans, to
 [maintainer-agent](https://github.com/louisremi/maintainer-agent) (which

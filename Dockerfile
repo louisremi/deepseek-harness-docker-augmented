@@ -249,8 +249,8 @@ ARG IMAGE_VERSION=dev
 ARG IMAGE_REVISION=unknown
 LABEL org.opencontainers.image.title="DeepSeek Harness (dev tooling + bwrap + SameSite=Lax)" \
       org.opencontainers.image.description="runzhliu/deepseek-harness with bubblewrap, a SameSite=Lax session cookie and HolyClaude-slim developer tooling" \
-      org.opencontainers.image.source="https://github.com/louisremi/deepseek-harness-docker-dev" \
-      org.opencontainers.image.url="https://github.com/louisremi/deepseek-harness-docker-dev" \
+      org.opencontainers.image.source="https://github.com/louisremi/deepseek-harness-docker-devkit" \
+      org.opencontainers.image.url="https://github.com/louisremi/deepseek-harness-docker-devkit" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${IMAGE_VERSION}" \
       org.opencontainers.image.revision="${IMAGE_REVISION}" \

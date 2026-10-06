@@ -1,19 +1,21 @@
 # How maintainer-agent (https://github.com/louisremi/maintainer-agent)
 # behaves in this repository. Validated strictly by the agent; protected (the
 # agent never modifies it).
-version: 1
+version: 2
 
 instructions: [AGENTS.md]
 
+# Repository playbooks, overriding the generic ones shipped with the agent.
+# v1 `triage` is now `issue`; v1 `ci-fix` has no v2 equivalent (CI fixes
+# arrive as `agent-fix` issues and use the implement playbook).
 playbooks:
-  triage: docs/agent/triage.md
+  issue: docs/agent/triage.md
   implement: docs/agent/implement-issue.md
-  ci-fix: docs/agent/fix-ci-failure.md
 
 checks:
   - scripts/static-check.sh --online
 
-# Hosts the fix-mode agent needs for `static-check.sh --online` and
+# Hosts the fix agent needs for `static-check.sh --online` and
 # `refresh-checksums.py` (GitHub is always allowed).
 egress:
   - registry.npmjs.org
@@ -32,12 +34,8 @@ links:
 protected_paths:
   - scripts/smoke.sh
 
-bot_branches: [renovate/*]
-bot_authors: ["29139614+renovate[bot]@users.noreply.github.com"]
-
-triage:
+answer:
   enabled: true
-  max_age_days: 14
   max_attempts: 2
 
 fix:

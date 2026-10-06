@@ -42,7 +42,7 @@ Day-to-day use is in [README.md](README.md); development is in
 ## The same settings via `gh`
 
 ```bash
-R=louisremi/deepseek-harness-docker-dev
+R=louisremi/deepseek-harness-docker-devkit
 gh repo edit $R --enable-auto-merge --delete-branch-on-merge
 gh secret set DOCKERHUB_USERNAME -R $R; gh secret set DOCKERHUB_TOKEN -R $R
 gh variable set RENOVATE_APP_CLIENT_ID -R $R
