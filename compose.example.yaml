@@ -1,11 +1,11 @@
-# Example service for louisremi/deepseek-harness-dev. Mirrors upstream's
+# Example service for louisremi/deepseek-harness-devkit. Mirrors upstream's
 # hardened compose.yaml and adds the security_opt values bubblewrap needs.
 #
 #   DSH_WORKSPACE=/absolute/path/to/project docker compose -f compose.example.yaml up -d
 #   docker compose -f compose.example.yaml logs deepseek-harness | grep 'dsh web:'
 services:
   deepseek-harness:
-    image: docker.io/louisremi/deepseek-harness-dev:${DSH_DEV_TAG:-latest}
+    image: docker.io/louisremi/deepseek-harness-devkit:${DSH_DEV_TAG:-latest}
     ports:
       - "127.0.0.1:${DSH_PORT:-3080}:3080"
       - "127.0.0.1:${DSH_DESKTOP_PORT:-6080}:6080"

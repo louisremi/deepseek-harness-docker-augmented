@@ -1,6 +1,6 @@
-# deepseek-harness-dev
+# deepseek-harness-docker-devkit
 
-`docker.io/louisremi/deepseek-harness-dev`: [runzhliu/deepseek-harness](https://github.com/runzhliu/deepseek-harness-docker)
+`docker.io/louisremi/deepseek-harness-devkit`: [runzhliu/deepseek-harness](https://github.com/runzhliu/deepseek-harness-docker)
 (DeepSeek Harness Web UI, community container) plus two patches, a dsh plugin
 and a developer toolbox. It rebuilds itself whenever upstream or any bundled
 tool releases.

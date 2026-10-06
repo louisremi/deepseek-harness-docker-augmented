@@ -2,13 +2,13 @@
 # Print the next image tag: <upstream-tag>-dev.<N>, where N is one more than
 # the highest N already published on Docker Hub for this upstream tag.
 #
-#   scripts/next-tag.sh [repository]      default: louisremi/deepseek-harness-dev
+#   scripts/next-tag.sh [repository]      default: louisremi/deepseek-harness-devkit
 #
 # Anonymous Docker Hub API access is enough (public repository). A repository
 # that does not exist yet yields N=1.
 set -euo pipefail
 
-repo="${1:-louisremi/deepseek-harness-dev}"
+repo="${1:-louisremi/deepseek-harness-devkit}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
 
 upstream="$(sed -n 's/^ARG DSH_BASE_IMAGE=.*:\([^:@]*\)@sha256:.*/\1/p' "${root}/Dockerfile")"

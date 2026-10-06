@@ -6,7 +6,7 @@ watches this repository's issues and CI), and to any other coding agent.
 
 ## What this repository is
 
-It builds `docker.io/louisremi/deepseek-harness-dev`: the upstream
+It builds `docker.io/louisremi/deepseek-harness-devkit`: the upstream
 `runzhliu/deepseek-harness` image with
 
 1. **bubblewrap** installed, so dsh's sandbox (`dsh-sandbox-local`, Linux

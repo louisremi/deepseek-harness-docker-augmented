@@ -8,7 +8,7 @@ Day-to-day use is in [README.md](README.md); development is in
 
 1. **Docker Hub:** secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (access
    token with read/write). The first publish creates the public repository
-   `louisremi/deepseek-harness-dev`.
+   `louisremi/deepseek-harness-devkit`.
 2. **Renovate** runs as a private GitHub App of your own (Settings → Developer
    settings → GitHub Apps → New GitHub App):
    - Webhook: uncheck *Active* (the URL is then no longer required). No
