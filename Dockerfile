@@ -40,7 +40,7 @@
 # ---------------------------------------------------------------------------
 
 # renovate: datasource=docker depName=runzhliu/deepseek-harness
-ARG DSH_BASE_IMAGE=docker.io/runzhliu/deepseek-harness:0.2.0-rc.2-r1@sha256:9e77149170f11c444b734f0d11746722a708ac6bea5826689e4b7dbac8ffbda0
+ARG DSH_BASE_IMAGE=docker.io/runzhliu/deepseek-harness:0.2.1-alpha.1-r1@sha256:fff6d502e6d202f43732472ca023934b4628390c89464d567ea69309abc615b6
 
 FROM ${DSH_BASE_IMAGE}
 
