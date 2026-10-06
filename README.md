@@ -1,8 +1,8 @@
 # deepseek-harness-docker-devkit
 
 `docker.io/louisremi/deepseek-harness-devkit`: [runzhliu/deepseek-harness](https://github.com/runzhliu/deepseek-harness-docker)
-(DeepSeek Harness Web UI, community container) plus two patches, a dsh plugin
-and a developer toolbox. It rebuilds itself whenever upstream or any bundled
+(DeepSeek Harness Web UI, community container, `-bwrap` variant) plus one patch,
+a dsh plugin and a developer toolbox. It rebuilds itself whenever upstream or any bundled
 tool releases.
 
 ## What's added on top of upstream
@@ -11,11 +11,17 @@ tool releases.
 
 | Patch | Why |
 | --- | --- |
-| **bubblewrap** (not setuid) | dsh's sandbox tries `bwrap`, then Landlock. Upstream ships no bwrap, and kernels without Landlock (e.g. Unraid) leave no runner. Every shell tool call then needs one-off approval, forever. See runzhliu/deepseek-harness-docker#35. |
 | **SameSite=Lax** session cookie | `Strict` blocks the intent-initiated navigation an installed Android PWA uses to log in. |
 
-Both are applied with build-time guards, so an upstream change fails the build
-instead of silently shipping an unpatched image.
+The patch is applied with a build-time guard, so an upstream change fails the
+build instead of silently shipping an unpatched image.
+
+**bubblewrap** is no longer patched in: the base is upstream's `-bwrap.N` image
+variant (since `0.2.1-alpha.1-r1-bwrap.1`, our report runzhliu/deepseek-harness-docker#35),
+which bundles a non-setuid `bwrap`. dsh's sandbox tries `bwrap`, then Landlock,
+so kernels without Landlock (e.g. Unraid) keep a working runner instead of
+needing one-off approval for every shell tool call. The build only asserts that
+`bwrap` is present and still preferred.
 
 **dsh plugin**
 
@@ -63,7 +69,7 @@ without AppArmor, like Unraid). On Ubuntu 23.10+ also set the host sysctl
 `kernel.apparmor_restrict_unprivileged_userns=0`
 (`/etc/sysctl.d/60-userns.conf`), as CI does.
 
-**Tags:** `<upstream-tag>-dev.<N>` (e.g. `0.1.7-rc.2-r1-dev.1`) and `latest`.
+**Tags:** `<upstream-tag>-dev.<N>` (e.g. `0.2.1-alpha.1-r1-bwrap.1-dev.1`) and `latest`.
 Images are published for linux/amd64 and linux/arm64.
 
 ## How it stays up to date

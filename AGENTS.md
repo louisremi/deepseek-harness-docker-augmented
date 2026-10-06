@@ -7,10 +7,12 @@ watches this repository's issues and CI), and to any other coding agent.
 ## What this repository is
 
 It builds `docker.io/louisremi/deepseek-harness-devkit`: the upstream
-`runzhliu/deepseek-harness` image with
+`runzhliu/deepseek-harness` image, **`-bwrap.N` variant**, with
 
-1. **bubblewrap** installed, so dsh's sandbox (`dsh-sandbox-local`, Linux
-   chain `["bwrap", "landlock"]`) works on hosts without Landlock;
+1. **bubblewrap**, inherited from that variant (no longer a local patch since
+   upstream's `0.2.1-alpha.1-r1-bwrap.1`; see runzhliu/deepseek-harness-docker#35),
+   so dsh's sandbox (`dsh-sandbox-local`, Linux chain `["bwrap", "landlock"]`)
+   works on hosts without Landlock;
 2. the session cookie rewritten from **`SameSite=Strict` to `SameSite=Lax`**
    (the Android PWA launch path needs it);
 3. HolyClaude "slim" **developer tooling**: apt tools, release binaries (gh,
@@ -28,7 +30,7 @@ and arm64 on native runners, smoke-tests them, and publishes
 
 | Path | Purpose |
 | --- | --- |
-| `Dockerfile` | The image. Patches first, then tools, then the `web`-profile plugin. Every pin carries a `# renovate:` comment. |
+| `Dockerfile` | The image. Base-contract assertions and the Lax patch first, then tools, then the `web`-profile plugin. Every pin carries a `# renovate:` comment. |
 | `tools/npm/package.json` + `package-lock.json` | npm CLIs (exact versions) and the `allowScripts` install-script policy. |
 | `tools/python/requirements.txt` | Python libraries (exact `==` pins, wheels only). |
 | `scripts/refresh-checksums.py` | Recomputes per-arch sha256 ARGs for release binaries and cross-checks them against upstream-published checksums. |
@@ -44,18 +46,22 @@ and arm64 on native runners, smoke-tests them, and publishes
 
 ## Invariants: never break these
 
-- **Both patches stay, with their guards.** The bubblewrap step asserts that the
-  sandbox chain still prefers `bwrap`; the Lax step asserts the cookie string
-  exists. If a guard fails after an upstream bump, *investigate*; do not delete
-  the guard. If upstream itself now ships bwrap or Lax, the steps are designed
-  to still pass, so leave them in place and mention it in the PR.
+- **The Lax patch stays, with its guard; the bwrap contract stays asserted.**
+  The Lax step asserts the cookie string exists. The bubblewrap step installs
+  nothing: it asserts that the base still provides a non-setuid `bwrap` and
+  that the sandbox chain still prefers it. If a guard fails after an upstream
+  bump, *investigate*; do not delete the guard. If upstream itself now ships
+  Lax, the step is designed to still pass, so leave it in place and mention it
+  in the PR. If upstream stops publishing `-bwrap.N` tags, that is a human
+  decision (see `docs/agent/bump-upstream.md`).
 - **bwrap is not setuid.** Production runs with `no-new-privileges`. Do not add
   `chmod u+s`.
 - **Upstream binaries keep PATH precedence.** Devtools are *appended* to PATH.
   Never bundle `pnpm` (upstream pins its own for `dsh plugin`), and never
   replace upstream's node or python3.
-- **Base image = plain variant, pinned by tag and digest.** Never `-market.*`
-  or `-ungoogled.*`, never `latest`.
+- **Base image = upstream `-bwrap.N` variant, pinned by tag and digest.**
+  Never the plain tag (it ships no bwrap), `-market.*` or `-ungoogled.*`, and
+  never `latest`.
 - **Every download is checksum-verified for both amd64 and arm64.** When you
   change a `<TOOL>_VERSION`, run
   `python3 scripts/refresh-checksums.py --tool <depName>`; never hand-edit
@@ -90,7 +96,7 @@ No Docker? Push to a branch with an open PR and let CI build it:
 
 ## Tag scheme
 
-`<upstream-tag>-dev.<N>`, e.g. `0.1.7-rc.2-r1-dev.3`. N counts publishes on
+`<upstream-tag>-dev.<N>`, e.g. `0.2.1-alpha.1-r1-bwrap.1-dev.3` (the upstream tag includes its `-bwrap.M` suffix). N counts publishes on
 the same upstream tag (tool bumps, Debian security rebuilds). `latest` always
 points at the newest publish. `scripts/next-tag.sh` computes it; never
 publish by hand over an existing tag.

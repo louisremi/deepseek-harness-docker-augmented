@@ -23,27 +23,31 @@ skip() { printf 'skip %s\n' "$1"; }
 check() { local d="$1"; shift; if "$@"; then ok "$d"; else bad "$d"; fi; }
 
 step "patch guards in Dockerfile"
-bwrap_patch() {
-  grep -qF 'apt-get install --yes --no-install-recommends bubblewrap;' Dockerfile \
-    && grep -qF "grep -Eq 'linux: \\[\"bwrap\"'" Dockerfile
+# bubblewrap comes from upstream's -bwrap.N base variant; the Dockerfile must
+# only assert it (never install it) and keep the sandbox-chain guard.
+bwrap_contract() {
+  grep -qF "grep -Eq 'linux: \\[\"bwrap\"'" Dockerfile \
+    && grep -qF 'command -v bwrap' Dockerfile \
+    && grep -qF 'test ! -u /usr/bin/bwrap' Dockerfile \
+    && ! grep -Eq '^[^#]*apt-get install.*bubblewrap|^[^#]*[[:space:]]bubblewrap;' Dockerfile
 }
 lax_patch() {
   grep -qF 's/HttpOnly; SameSite=Strict/HttpOnly; SameSite=Lax/' Dockerfile \
     && grep -qF "grep -q 'HttpOnly; SameSite=Lax'" Dockerfile
 }
-check "bubblewrap patch + sandbox-chain guard present" bwrap_patch
+check "bubblewrap contract assertion + sandbox-chain guard present (no local install)" bwrap_contract
 check "SameSite=Lax patch + guard present" lax_patch
 
 step "base image pin"
-if grep -Eq '^ARG DSH_BASE_IMAGE=docker\.io/runzhliu/deepseek-harness:[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?-r[0-9]+@sha256:[0-9a-f]{64}$' Dockerfile; then
+if grep -Eq '^ARG DSH_BASE_IMAGE=docker\.io/runzhliu/deepseek-harness:[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?-r[0-9]+-bwrap\.[0-9]+@sha256:[0-9a-f]{64}$' Dockerfile; then
   ok "DSH_BASE_IMAGE pinned by tag and digest"
 else
-  bad "DSH_BASE_IMAGE must be docker.io/runzhliu/deepseek-harness:<X.Y.Z[-pre.N]-rN>@sha256:<digest>"
+  bad "DSH_BASE_IMAGE must be docker.io/runzhliu/deepseek-harness:<X.Y.Z[-pre.N]-rN-bwrap.M>@sha256:<digest>"
 fi
 if grep '^ARG DSH_BASE_IMAGE=' Dockerfile | grep -Eq -- '-(market|ungoogled)\.'; then
-  bad "DSH_BASE_IMAGE must use the plain upstream variant"
+  bad "DSH_BASE_IMAGE must use the bwrap upstream variant, not market/ungoogled"
 else
-  ok "plain upstream variant"
+  ok "bwrap upstream variant (not market/ungoogled)"
 fi
 
 step "release binary checksums"

@@ -19,11 +19,11 @@ printf 'dsh=%s\n' "$(dsh --version)"
 printf 'node=%s\n' "$(node --version)"
 printf 'pnpm=%s\n' "$(pnpm --version)"
 printf 'python3=%s\n' "$(python3 --version | awk '{print $2}')"
+printf 'bwrap=%s\n' "$(bwrap --version | awk '{print $2}')"
 
 section "patches"
 grep -o 'HttpOnly; SameSite=[A-Za-z]*' \
   /usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js
-printf 'bwrap=%s\n' "$(bwrap --version | awk '{print $2}')"
 
 section "dsh plugins (web profile)"
 # The plugin is baked into the Harness home at build time (see the Dockerfile's

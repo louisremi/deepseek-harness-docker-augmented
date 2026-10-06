@@ -2,32 +2,32 @@
 #
 # louisremi/deepseek-harness-devkit
 #
-# runzhliu/deepseek-harness + two local patches + HolyClaude "slim" developer
-# tooling + the dsh-docker-adapter plugin in the `web` profile. Every version
-# below is pinned and kept current by Renovate (see
+# runzhliu/deepseek-harness (bubblewrap variant) + one local patch + HolyClaude
+# "slim" developer tooling + the dsh-docker-adapter plugin in the `web`
+# profile. Every version below is pinned and kept current by Renovate (see
 # renovate.json5); release binaries carry per-architecture sha256 values that
 # scripts/refresh-checksums.py refreshes in the same PR. Read AGENTS.md before
 # editing this file.
 #
 # ---------------------------------------------------------------------------
-# Patch 1 -- bubblewrap
+# Bubblewrap -- inherited from upstream's `-bwrap.N` image variant
 #
 # dsh-sandbox-local's Linux runner chain is ["bwrap", "landlock"]. On nasbrico
-# both rungs are missing out of the box: upstream ships no bubblewrap, and the
-# Unraid kernel was built without CONFIG_SECURITY_LANDLOCK (the syscall returns
-# ENOSYS, permanently). With an empty chain every bash tool call fails closed
-# with SANDBOX_UNAVAILABLE and falls back to a danger-full-access escalation
-# that must be approved once per command, forever. Installing bwrap restores
-# the first rung, so commands are genuinely confined again and the prompts
-# stop. Reported upstream as runzhliu/deepseek-harness-docker#35.
+# the Unraid kernel was built without CONFIG_SECURITY_LANDLOCK (the syscall
+# returns ENOSYS, permanently), and the plain upstream image ships no
+# bubblewrap, so every bash tool call failed closed with SANDBOX_UNAVAILABLE
+# and needed a one-off danger-full-access approval, forever. We reported this
+# as runzhliu/deepseek-harness-docker#35; since 0.2.1-alpha.1-r1 upstream
+# publishes a `-bwrap.N` variant that installs bubblewrap itself, so we no
+# longer patch it in. The base MUST stay on that variant (never the plain tag);
+# the step below only asserts the contract and installs nothing.
 #
-# bwrap is installed WITHOUT the setuid bit on purpose: the runtime keeps
-# `no-new-privileges`, which neutralises setuid anyway. It works unprivileged
-# via user namespaces, which needs compose security_opt values
-# (seccomp=unconfined, systempaths=unconfined, and apparmor=unconfined on
-# AppArmor hosts); see compose.example.yaml.
+# bwrap is not setuid on purpose: the runtime keeps `no-new-privileges`, which
+# neutralises setuid anyway. It works unprivileged via user namespaces, which
+# needs compose security_opt values (seccomp=unconfined, systempaths=unconfined,
+# and apparmor=unconfined on AppArmor hosts); see compose.example.yaml.
 #
-# Patch 2 -- SameSite=Lax
+# Patch -- SameSite=Lax
 #
 # Upstream mints the browser-session cookie at /?token= with SameSite=Strict.
 # An installed Android PWA (WebAPK) launches via an intent, and Strict blocks
@@ -41,7 +41,7 @@
 # ---------------------------------------------------------------------------
 
 # renovate: datasource=docker depName=runzhliu/deepseek-harness
-ARG DSH_BASE_IMAGE=docker.io/runzhliu/deepseek-harness:0.2.1-alpha.1-r1@sha256:fff6d502e6d202f43732472ca023934b4628390c89464d567ea69309abc615b6
+ARG DSH_BASE_IMAGE=docker.io/runzhliu/deepseek-harness:0.2.1-alpha.1-r1-bwrap.1@sha256:a5299befb0e8ee5a6d8be8d6fa2e94de83708e4adb63f8da2c1fd31588399c99
 
 FROM ${DSH_BASE_IMAGE}
 
@@ -53,18 +53,16 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV DSH_MODULES=/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai
 
-# ---------- Patch 1: bubblewrap --------------------------------------------
-# hadolint ignore=DL3008
+# ---------- Contract: the base provides bubblewrap -------------------------
 RUN set -eux; \
     grep -Eq 'linux: \["bwrap"' "${DSH_MODULES}/dsh-sandbox-local/lib/index.js" \
       || { echo "PATCH GUARD: dsh-sandbox-local no longer prefers bwrap on linux; re-read the sandbox plugin before shipping" >&2; exit 1; }; \
-    apt-get update; \
-    apt-get install --yes --no-install-recommends bubblewrap; \
-    rm -rf /var/lib/apt/lists/*; \
+    command -v bwrap >/dev/null \
+      || { echo "PATCH GUARD: base image has no bwrap; DSH_BASE_IMAGE must be the upstream -bwrap.N variant" >&2; exit 1; }; \
     test -x /usr/bin/bwrap; \
-    test "$(stat -c '%a' /usr/bin/bwrap)" = "755"
+    test ! -u /usr/bin/bwrap
 
-# ---------- Patch 2: SameSite=Lax ------------------------------------------
+# ---------- Patch: SameSite=Lax ------------------------------------------
 RUN set -eux; \
     f="${DSH_MODULES}/dsh-client-connection/lib/index.js"; \
     if grep -q 'HttpOnly; SameSite=Strict' "$f"; then \
@@ -247,13 +245,13 @@ WORKDIR /workspace
 # Metadata last so a new revision only changes image config.
 ARG IMAGE_VERSION=dev
 ARG IMAGE_REVISION=unknown
-LABEL org.opencontainers.image.title="DeepSeek Harness (dev tooling + bwrap + SameSite=Lax)" \
-      org.opencontainers.image.description="runzhliu/deepseek-harness with bubblewrap, a SameSite=Lax session cookie and HolyClaude-slim developer tooling" \
+LABEL org.opencontainers.image.title="DeepSeek Harness (dev tooling + SameSite=Lax)" \
+      org.opencontainers.image.description="runzhliu/deepseek-harness (bubblewrap variant) with a SameSite=Lax session cookie and HolyClaude-slim developer tooling" \
       org.opencontainers.image.source="https://github.com/louisremi/deepseek-harness-docker-devkit" \
       org.opencontainers.image.url="https://github.com/louisremi/deepseek-harness-docker-devkit" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${IMAGE_VERSION}" \
       org.opencontainers.image.revision="${IMAGE_REVISION}" \
       org.opencontainers.image.base.name="${DSH_BASE_IMAGE}" \
-      io.github.louisremi.deepseek-harness-devkit.patches="bubblewrap,samesite-lax"
+      io.github.louisremi.deepseek-harness-devkit.patches="samesite-lax"
 # ENTRYPOINT / CMD are inherited unchanged from upstream (tini -> dsh web).
