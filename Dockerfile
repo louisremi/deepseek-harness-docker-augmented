@@ -57,10 +57,12 @@ ENV DSH_MODULES=/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deeps
 RUN set -eux; \
     grep -Eq 'linux: \["bwrap"' "${DSH_MODULES}/dsh-sandbox-local/lib/index.js" \
       || { echo "PATCH GUARD: dsh-sandbox-local no longer prefers bwrap on linux; re-read the sandbox plugin before shipping" >&2; exit 1; }; \
-    command -v bwrap >/dev/null \
-      || { echo "PATCH GUARD: base image has no bwrap; DSH_BASE_IMAGE must be the upstream -bwrap.N variant" >&2; exit 1; }; \
-    test -x /usr/bin/bwrap; \
-    test ! -u /usr/bin/bwrap
+    bwrap="$(command -v bwrap)" \
+      || { echo "PATCH GUARD: base image has no bwrap on PATH; DSH_BASE_IMAGE must be the upstream -bwrap.N variant" >&2; exit 1; }; \
+    test ! -u "${bwrap}" \
+      || { echo "PATCH GUARD: base image bwrap is setuid; our invariant requires a non-setuid bwrap (the runtime keeps no-new-privileges)" >&2; exit 1; }; \
+    setpriv --reuid="$(id -u node)" --regid="$(id -g node)" --clear-groups test -x "${bwrap}" \
+      || { echo "PATCH GUARD: base image bwrap (${bwrap}) is not executable by the runtime user node" >&2; exit 1; }
 
 # ---------- Patch: SameSite=Lax ------------------------------------------
 RUN set -eux; \

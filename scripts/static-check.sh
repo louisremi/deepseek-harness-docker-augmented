@@ -26,10 +26,16 @@ step "patch guards in Dockerfile"
 # bubblewrap comes from upstream's -bwrap.N base variant; the Dockerfile must
 # only assert it (never install it) and keep the sandbox-chain guard.
 bwrap_contract() {
+  # Join backslash continuations (and drop comments) so a multi-line
+  # `apt-get install \ bubblewrap \ ...` cannot slip past the negative check.
+  local joined
+  joined="$(awk '{ sub(/#.*/, "") } /\\$/ { printf "%s ", substr($0, 1, length($0)-1); next } { print }' Dockerfile)"
   grep -qF "grep -Eq 'linux: \\[\"bwrap\"'" Dockerfile \
     && grep -qF 'command -v bwrap' Dockerfile \
-    && grep -qF 'test ! -u /usr/bin/bwrap' Dockerfile \
-    && ! grep -Eq '^[^#]*apt-get install.*bubblewrap|^[^#]*[[:space:]]bubblewrap;' Dockerfile
+    && grep -qF 'test ! -u "${bwrap}"' Dockerfile \
+    && grep -qF 'PATCH GUARD: base image bwrap is setuid' Dockerfile \
+    && grep -qF 'test -x "${bwrap}"' Dockerfile \
+    && ! grep -Eq 'apt-get install[^;&|]*bubblewrap' <<<"${joined}"
 }
 lax_patch() {
   grep -qF 's/HttpOnly; SameSite=Strict/HttpOnly; SameSite=Lax/' Dockerfile \

@@ -25,12 +25,14 @@ grep -n -A20 'function bwrapProfileArgs' package/lib/index.js
 - If the bwrap arguments changed (new flags), make `scripts/smoke.sh` exercise
   the same flags, since its bwrap check mirrors `bwrapProfileArgs`.
 
-### `PATCH GUARD: base image has no bwrap`
+### `PATCH GUARD: base image has no bwrap on PATH` / `bwrap is setuid` / `not executable by the runtime user`
 
 Bubblewrap is no longer installed by this repository: it comes from upstream's
 `-bwrap.N` image variant (introduced with `0.2.1-alpha.1-r1-bwrap.1`; our
-report: runzhliu/deepseek-harness-docker#35). The assertion fires when the
-base lacks `bwrap` (or it is setuid).
+report: runzhliu/deepseek-harness-docker#35). Three distinct
+assertions share this step, each with its own message: `bwrap` missing from
+`PATH`, `bwrap` setuid, or `bwrap` not executable by the runtime user `node`
+(e.g. a root-only mode).
 
 - Check the `DSH_BASE_IMAGE` tag really ends in `-bwrap.<M>`.
 - If upstream stopped publishing `-bwrap.N` tags (or folded bwrap into the
