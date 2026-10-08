@@ -70,6 +70,7 @@ without AppArmor, like Unraid). On Ubuntu 23.10+ also set the host sysctl
 (`/etc/sysctl.d/60-userns.conf`), as CI does.
 
 **Tags:** `<upstream-tag>-dev.<N>` (e.g. `0.2.1-alpha.1-r1-bwrap.1-dev.1`) and `latest`.
+Every tag has a [GitHub Release](https://github.com/louisremi/deepseek-harness-docker-devkit/releases) with the same name and generated notes.
 Images are published for linux/amd64 and linux/arm64.
 
 ## How it stays up to date
@@ -79,10 +80,19 @@ Renovate (every 2h, self-hosted in Actions)
   └─ PR per update: upstream image (tag+digest) · gh/yq/fzf/atuin/cursor (+ sha256 refresh)
                     · npm CLIs · Python libs · Actions      + "Dependency Dashboard" issue
        └─ CI: static checks → build amd64+arm64 → smoke test (hardened runtime, bwrap, Lax cookie, all tools)
-            ├─ green → GitHub auto-merge → main CI → publish <upstream>-dev.<N> + latest
+            ├─ green → GitHub auto-merge → main CI (build + smoke)
+            │            └─ if the PR changed the upstream image pin → publish <upstream>-dev.<N> + latest
+            │               and create the GitHub Release (generated notes)
             └─ red   → issue [agent-fix] → maintainer-agent (self-hosted) pushes a fix
                                                             → CI green → issue closed → maintainer reviews + merges
-Weekly rebuild picks up Debian security updates; it publishes only if the image inventory changed.
+Weekly rebuild (Mon 04:00 UTC) picks up Debian security updates and any tool/library bump merged meanwhile;
+it publishes (and creates a release) only if the image inventory changed.
+Other merged bumps do not publish by themselves. To ship them sooner, cut a release by hand:
+
+    gh release create "$(scripts/next-tag.sh)" --generate-notes
+
+CI then builds that commit and publishes the image under the release's tag and `latest`. The tag must be
+the next free `<upstream-tag>-dev.<N>` and the commit must be on `main`; otherwise the run fails before pushing anything.
 
 New issues ──► same agent, triage mode (sandboxed, offline, no token): investigates and posts one first answer
                (maintainer issues automatically; others after a maintainer adds the `triage` label)

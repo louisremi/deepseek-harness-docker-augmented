@@ -59,6 +59,16 @@ EOF
 gh api -X PUT repos/$R/environments/no-review
 ```
 
+## Releases
+
+Publishing needs no extra secrets: `ci.yml` pushes with the Docker Hub secrets
+above and creates releases with the workflow's own `GITHUB_TOKEN`
+(`contents: write` on the `publish` job only). A release created by hand
+(`gh release create "$(scripts/next-tag.sh)" --generate-notes`) is built from
+its commit, which must be on `main`, and must be tagged `<upstream-tag>-dev.<N>`.
+Optionally add a tag ruleset (Settings → Rules) restricting who may create
+`*-dev.*` tags, since a release triggers a publish.
+
 ## Afterwards
 
 With `enforce_admins` on, your own direct pushes to `main` are refused too.

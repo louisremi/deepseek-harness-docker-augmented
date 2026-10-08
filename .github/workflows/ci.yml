@@ -1,6 +1,6 @@
 name: CI
 
-# validate -> build+smoke (amd64, arm64, native runners) -> publish (main only)
+# validate -> build+smoke (amd64, arm64, native runners) -> publish
 #
 # PRs (Renovate bumps, agent fixes): build and smoke both architectures, push
 # nothing. Branch protection requires `review-gate / gate`, `validate`,
@@ -8,11 +8,20 @@ name: CI
 # but anything maintainer-agent may have touched waits for a human at
 # `review-gate` (see the job below).
 #
-# main / weekly schedule / manual dispatch: the same, then push each
-# architecture by digest and publish a multi-arch manifest as
-# louisremi/deepseek-harness-devkit:<upstream-tag>-dev.<N> and :latest.
-# Scheduled runs publish only if /opt/devtools/MANIFEST.txt differs from the
-# current :latest (e.g. Debian security updates), so no empty tags appear.
+# Publishing pushes each architecture by digest, then a multi-arch manifest as
+# louisremi/deepseek-harness-devkit:<upstream-tag>-dev.<N> and :latest. It
+# happens only when `validate` decides so (scripts/release-plan.sh):
+#   - push to main that changed the upstream base image pin (tag or digest)
+#     since the latest GitHub release -> publish, then create that release
+#     (generated notes) with the same tag as the image;
+#   - weekly schedule / manual dispatch on main -> same, but only if
+#     /opt/devtools/MANIFEST.txt differs from :latest (e.g. Debian security
+#     updates; tool bumps merged meanwhile ship too), so no empty tags appear;
+#   - a GitHub Release created by hand (tag = the next <upstream>-dev.<N>,
+#     commit on main) -> publish that tag. Releases created by this workflow's
+#     GITHUB_TOKEN do not trigger the release event, so there is no loop.
+# Any other push to main (tool, npm, pip, action bumps) builds and smoke-tests
+# only; cut a release when you want those to ship.
 #
 # Jobs always run (so required checks never hang on docs-only PRs); the image
 # build is skipped when no file that ends up in the image changed.
@@ -21,6 +30,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  release:
+    types: [published]
   schedule:
     - cron: "0 4 * * 1"
   workflow_dispatch:
@@ -64,6 +75,7 @@ jobs:
     timeout-minutes: 20
     outputs:
       image_changed: ${{ steps.changes.outputs.image_changed }}
+      publish: ${{ steps.plan.outputs.publish }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -91,6 +103,28 @@ jobs:
           else
             echo "image_changed=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # Should this run publish an image? Values from the event reach the
+      # script through env only (a release tag name is user input).
+      - name: Publish plan
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          BEFORE: ${{ github.event.before }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT}" == "release" ]]; then
+            scripts/release-plan.sh validate-tag "${RELEASE_TAG}" HEAD
+            if ! git merge-base --is-ancestor HEAD origin/main; then
+              echo "::error::Release ${RELEASE_TAG} points at a commit that is not on main; only reviewed code may be published."
+              exit 1
+            fi
+            scripts/release-plan.sh tag-free "${RELEASE_TAG}"
+          fi
+          scripts/release-plan.sh decide "${EVENT}" "${REF}" "${BEFORE}" | tee -a "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v7
         with:
@@ -121,8 +155,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
-      ENABLED: ${{ needs.validate.outputs.image_changed == 'true' }}
-      PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.validate.outputs.image_changed == 'true' }}
+      ENABLED: ${{ needs.validate.outputs.image_changed == 'true' || needs.validate.outputs.publish == 'true' }}
+      PUBLISH: ${{ needs.validate.outputs.publish == 'true' }}
     steps:
       - name: Skip (no image inputs changed)
         if: env.ENABLED != 'true'
@@ -200,9 +234,11 @@ jobs:
 
   publish:
     needs: [validate, build]
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.validate.outputs.image_changed == 'true'
+    if: needs.validate.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: write # create the GitHub Release after the image is pushed
     concurrency:
       group: publish
       cancel-in-progress: false
@@ -241,10 +277,18 @@ jobs:
           [[ "${changed}" == true ]] || echo "Image contents unchanged since :latest; skipping publish." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create and push multi-arch tags
+        id: tags
         if: steps.decide.outputs.publish == 'true'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          tag="$(scripts/next-tag.sh louisremi/deepseek-harness-devkit)"
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            tag="${RELEASE_TAG}" # validated in `validate` (format, on main, unused)
+          else
+            tag="$(scripts/next-tag.sh louisremi/deepseek-harness-devkit)"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "Publishing ${IMAGE}:${tag} and :latest"
           docker buildx imagetools create \
             --tag "${IMAGE}:${tag}" \
@@ -257,3 +301,23 @@ jobs:
             echo
             echo "Also tagged \`latest\`. Platforms: linux/amd64, linux/arm64."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Automatic publishes (upstream bump, weekly, dispatch) get a release
+      # with the same tag as the image. Created last: a failure here leaves an
+      # image without a release, never a release without an image. A release
+      # made by hand already exists, and one made with GITHUB_TOKEN never
+      # triggers this workflow again.
+      - name: Create the GitHub Release (generated notes)
+        if: steps.decide.outputs.publish == 'true' && github.event_name != 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tags.outputs.tag }}
+        run: |
+          set -euo pipefail
+          prev="$(scripts/release-plan.sh last-release)"
+          args=(--target "${GITHUB_SHA}" --title "${TAG}" --generate-notes
+                --notes "Image: \`${IMAGE}:${TAG}\` (also \`latest\`), linux/amd64 and linux/arm64.")
+          # An explicit start tag: GitHub's automatic "previous tag" is unreliable for non-semver tags.
+          [[ -z "${prev}" ]] || args+=(--notes-start-tag "${prev}")
+          gh release create "${TAG}" "${args[@]}"
+          echo "Release \`${TAG}\` created." >> "$GITHUB_STEP_SUMMARY"

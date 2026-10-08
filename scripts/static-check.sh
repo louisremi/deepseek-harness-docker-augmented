@@ -56,6 +56,65 @@ else
   ok "bwrap upstream variant (not market/ungoogled)"
 fi
 
+step "release planning (scripts/release-plan.sh)"
+release_plan_tests() {
+  local t rc=0 pin1 pin2 c1 c2 rp="${root}/scripts/release-plan.sh"
+  t="$(mktemp -d)"
+  pin1='ARG DSH_BASE_IMAGE=docker.io/runzhliu/deepseek-harness:1.2.3-rc.4-r1-bwrap.1@sha256:'"$(printf 'a%.0s' {1..64})"
+  pin2='ARG DSH_BASE_IMAGE=docker.io/runzhliu/deepseek-harness:1.2.3-rc.4-r1-bwrap.1@sha256:'"$(printf 'b%.0s' {1..64})"
+  (
+    set -e
+    cd "${t}"
+    git init -q .
+    git config user.email t@t; git config user.name t
+    printf '%s\nRUN true\n' "${pin1}" > Dockerfile; git add Dockerfile; git commit -qm one
+    printf '%s\nRUN echo tools\n' "${pin1}" > Dockerfile; git commit -qam tools
+  ) >/dev/null 2>&1 || rc=1
+  c1="$(git -C "${t}" rev-parse HEAD~1 2>/dev/null)" || rc=1
+  printf '%s\nRUN echo tools\n' "${pin2}" > "${t}/Dockerfile"
+  git -C "${t}" commit -qam upstream >/dev/null 2>&1 || rc=1
+  c2="$(git -C "${t}" rev-parse HEAD 2>/dev/null)" || rc=1
+  export RELEASE_PLAN_ROOT="${t}"
+  rp_is() { local want="$1"; shift; [[ "$("${rp}" "$@" 2>/dev/null)" == "${want}" ]] || { echo "  unexpected result: release-plan.sh $*" >&2; rc=1; }; }
+  rp_fails() { if "${rp}" "$@" >/dev/null 2>&1; then echo "  should have failed: release-plan.sh $*" >&2; rc=1; fi; }
+  rp_ok() { "${rp}" "$@" >/dev/null 2>&1 || { echo "  should have passed: release-plan.sh $*" >&2; rc=1; }; }
+
+  rp_is 1.2.3-rc.4-r1-bwrap.1 upstream-tag
+  rp_ok validate-tag 1.2.3-rc.4-r1-bwrap.1-dev.1
+  rp_ok validate-tag 1.2.3-rc.4-r1-bwrap.1-dev.12
+  rp_fails validate-tag 1.2.3-rc.4-r1-bwrap.1-dev.0
+  rp_fails validate-tag 1.2.3-rc.4-r1-bwrap.1-dev.01
+  rp_fails validate-tag 1.2.3-rc.4-r1-bwrap.1-dev.x
+  rp_fails validate-tag 1.2.3-rc.4-r1-bwrap.1-dev.
+  rp_fails validate-tag 1.2.3-rc.4-r1-bwrap.1
+  rp_fails validate-tag 9.9.9-r1-bwrap.1-dev.1
+  rp_fails validate-tag bogus
+  rp_fails validate-tag v1.0.0
+
+  # a release that already carries the current pin: nothing to publish
+  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-dev.1 rp_ok validate-tag 1.2.3-rc.4-r1-bwrap.1-dev.1
+  git -C "${t}" tag 1.2.3-rc.4-r1-bwrap.1-dev.1 "${c1}"
+  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-dev.1 rp_ok upstream-changed "${c2}"      # pin differs from last release
+  git -C "${t}" tag 1.2.3-rc.4-r1-bwrap.1-dev.2 "${c2}"
+  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-dev.2 rp_fails upstream-changed "${c1}"   # same pin as last release
+  RELEASE_PLAN_LAST_RELEASE='' rp_ok upstream-changed "${c1}"                                  # no release: compare with BEFORE
+  RELEASE_PLAN_LAST_RELEASE='' rp_fails upstream-changed "${c2}"
+  RELEASE_PLAN_LAST_RELEASE='' rp_fails upstream-changed 0000000000000000000000000000000000000000  # nothing to compare: never publish
+  RELEASE_PLAN_LAST_RELEASE='' rp_fails upstream-changed
+
+  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-dev.1 rp_is publish=true  decide push refs/heads/main "${c2}"
+  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-dev.2 rp_is publish=false decide push refs/heads/main "${c2}"
+  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-dev.1 rp_is publish=false decide push refs/heads/other "${c2}"
+  rp_is publish=false decide pull_request refs/pull/1/merge "${c1}"
+  rp_is publish=true  decide schedule refs/heads/main ""
+  rp_is publish=true  decide workflow_dispatch refs/heads/main ""
+  rp_is publish=false decide workflow_dispatch refs/heads/feature ""
+  rp_is publish=true  decide release refs/tags/x ""
+  rm -rf "${t}"
+  return "${rc}"
+}
+check "tag validation and publish decisions" release_plan_tests
+
 step "release binary checksums"
 check "checksum ARGs well-formed" python3 scripts/refresh-checksums.py --check
 
