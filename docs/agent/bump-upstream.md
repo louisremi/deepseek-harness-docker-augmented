@@ -8,10 +8,10 @@ Renovate bumped `ARG DSH_BASE_IMAGE` (tag + digest) and CI went red.
 
 Upstream changed the sandbox runner chain. Find its new shape (no Docker here,
 so read the published npm package that matches the DSH version; the tag
-`0.1.7-rc.3-r1` corresponds to `@deepseek-ai/dsh@0.1.7-rc.3`):
+`0.1.7-rc.3-r1-bwrap.1` corresponds to `@deepseek-ai/dsh@0.1.7-rc.3`):
 
 ```bash
-v=0.1.7-rc.3   # DSH version = upstream tag without the -rN suffix
+v=0.1.7-rc.3   # DSH version = upstream tag without the -rN[-bwrap.M] suffix
 cd "$(mktemp -d)" && npm pack "@deepseek-ai/dsh-sandbox-local@${v}" >/dev/null && tar -xzf *.tgz
 grep -n -A6 'PLATFORM_CHAINS' package/lib/index.js
 grep -n -A20 'function bwrapProfileArgs' package/lib/index.js
@@ -20,10 +20,27 @@ grep -n -A20 'function bwrapProfileArgs' package/lib/index.js
 - If `linux` still contains `"bwrap"` but formatted differently, adjust the
   guard regex so it still asserts "bwrap is the first linux rung".
 - If `bwrap` was removed or demoted, **do not "fix" the guard**. Stop and
-  report: the bubblewrap patch may no longer achieve anything, which is a
-  human decision.
+  report: bubblewrap in the base image may no longer achieve anything, which
+  is a human decision.
 - If the bwrap arguments changed (new flags), make `scripts/smoke.sh` exercise
   the same flags, since its bwrap check mirrors `bwrapProfileArgs`.
+
+### `PATCH GUARD: base image has no bwrap on PATH` / `bwrap is setuid` / `not executable by the runtime user`
+
+Bubblewrap is no longer installed by this repository: it comes from upstream's
+`-bwrap.N` image variant (introduced with `0.2.1-alpha.1-r1-bwrap.1`; our
+report: runzhliu/deepseek-harness-docker#35). Three distinct
+assertions share this step, each with its own message: `bwrap` missing from
+`PATH`, `bwrap` setuid, or `bwrap` not executable by the runtime user `node`
+(e.g. a root-only mode).
+
+- Check the `DSH_BASE_IMAGE` tag really ends in `-bwrap.<M>`.
+- If upstream stopped publishing `-bwrap.N` tags (or folded bwrap into the
+  plain image), **stop and report**. Going back to the plain image plus our
+  own `apt-get install bubblewrap` step, or following the merged plain image,
+  is a human decision that also touches `renovate.json5`,
+  `scripts/static-check.sh` and `AGENTS.md`.
+- Never add `chmod u+s` to make it pass.
 
 ### `PATCH GUARD: session cookie string not found in dsh-client-connection`
 
@@ -37,12 +54,11 @@ grep -n 'SameSite' package/lib/*.js
   Lax. Keep the "fail if Strict remains" assertion.
 - If upstream now ships Lax, the step passes on its own. Nothing to do.
 
-## 2. Is bubblewrap now shipped by upstream?
+## 2. Which upstream tag line do we follow?
 
-If `command -v bwrap` would succeed in the new base (check the upstream
-Dockerfile in `runzhliu/deepseek-harness-docker` at the matching release),
-our install becomes a harmless no-op. Keep it, and mention it in the summary
-(upstream issue runzhliu/deepseek-harness-docker#35).
+Only `<X.Y.Z[-pre.N]>-r<N>-bwrap.<M>` tags (Renovate's versioning regex enforces
+it). A plain `-rN` release has no bwrap variant until upstream publishes it, so
+Renovate will not propose it; do not hand-bump to the plain tag.
 
 ## 3. Other upstream changes
 
@@ -52,7 +68,7 @@ our install becomes a harmless no-op. Keep it, and mention it in the summary
 - Node major changed: check `engines` of the npm CLIs in the lockfile.
 - A package we `apt-get install` is now already present: harmless.
 - `dsh --version` mismatch in smoke: `smoke.sh` derives the expected version
-  from the tag (strip `-rN`). If upstream changed its tag scheme, adapt that
+  from the tag (strip `-rN[-bwrap.M]`). If upstream changed its tag scheme, adapt that
   derivation *and* the upstream versioning regex in `renovate.json5`, and
   explain why in the commit message.
 

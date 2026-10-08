@@ -56,7 +56,7 @@ run 'test "$(command -v python3)" = /usr/bin/python3 && test "$(command -v node)
   || fail "upstream node/python3 no longer first on PATH"
 pass "upstream binaries keep PATH precedence"
 
-# --- 2. patch 1: bubblewrap actually confines -------------------------------
+# --- 2. bubblewrap (from upstream -bwrap variant) actually confines ---------
 run '
   test -x /usr/bin/bwrap
   test ! -u /usr/bin/bwrap
@@ -68,9 +68,9 @@ run '
     --tmpfs /tmp --bind /workspace /workspace -- touch /workspace/bwrap-ok
   test -f /workspace/bwrap-ok
 ' || fail "bubblewrap cannot create the dsh-sandbox-local profile under production hardening"
-pass "bubblewrap: read-only and workspace-write profiles work unprivileged"
+pass "bubblewrap (inherited from upstream): read-only and workspace-write profiles work unprivileged"
 
-# --- 3. patch 2: SameSite=Lax compiled in -----------------------------------
+# --- 3. patch: SameSite=Lax compiled in -----------------------------------
 run '
   f=/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js
   grep -q "HttpOnly; SameSite=Lax" "$f"

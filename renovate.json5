@@ -55,10 +55,10 @@
 
   packageRules: [
     {
-      description: 'Upstream DSH image: follow every revision incl. alpha/rc, only the plain variant, pinned by digest, no delay',
+      description: 'Upstream DSH image: follow every revision incl. alpha/rc, only the -bwrap.N variant (bubblewrap bundled), pinned by digest, no delay',
       matchDatasources: ['docker'],
       matchPackageNames: ['runzhliu/deepseek-harness'],
-      versioning: 'regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:-(?<prerelease>(?:alpha|beta|rc)\\.\\d+))?-r(?<build>\\d+)$',
+      versioning: 'regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:-(?<prerelease>(?:alpha|beta|rc)\\.\\d+))?-r(?<build>\\d+)-bwrap\\.(?<revision>\\d+)$',
       ignoreUnstable: false,
       respectLatest: false,
       pinDigests: true,
@@ -67,7 +67,7 @@
       commitMessageTopic: 'upstream DSH image',
       // Also catches upstream re-pushing the same tag (digest-only PR).
       prBodyNotes: [
-        'Upstream bump. CI rebuilds both patches (bubblewrap, SameSite=Lax) and fails loudly if either guard no longer applies. See docs/agent/bump-upstream.md.',
+        'Upstream bump (-bwrap.N variant). CI rebuilds the SameSite=Lax patch and asserts that the base still bundles a non-setuid bwrap and that the sandbox chain prefers it; it fails loudly otherwise. See docs/agent/bump-upstream.md.',
       ],
     },
     {
