@@ -80,31 +80,31 @@ release_plan_tests() {
   rp_ok() { "${rp}" "$@" >/dev/null 2>&1 || { echo "  should have passed: release-plan.sh $*" >&2; rc=1; }; }
 
   rp_is 1.2.3-rc.4-r1-bwrap.1 upstream-tag
-  rp_ok validate-tag 1.2.3-rc.4-r1-bwrap.1-dev.1
-  rp_ok validate-tag 1.2.3-rc.4-r1-bwrap.1-dev.12
-  rp_fails validate-tag 1.2.3-rc.4-r1-bwrap.1-dev.0
-  rp_fails validate-tag 1.2.3-rc.4-r1-bwrap.1-dev.01
-  rp_fails validate-tag 1.2.3-rc.4-r1-bwrap.1-dev.x
-  rp_fails validate-tag 1.2.3-rc.4-r1-bwrap.1-dev.
+  rp_ok validate-tag 1.2.3-rc.4-r1-bwrap.1-devkit.1
+  rp_ok validate-tag 1.2.3-rc.4-r1-bwrap.1-devkit.12
+  rp_fails validate-tag 1.2.3-rc.4-r1-bwrap.1-devkit.0
+  rp_fails validate-tag 1.2.3-rc.4-r1-bwrap.1-devkit.01
+  rp_fails validate-tag 1.2.3-rc.4-r1-bwrap.1-devkit.x
+  rp_fails validate-tag 1.2.3-rc.4-r1-bwrap.1-devkit.
   rp_fails validate-tag 1.2.3-rc.4-r1-bwrap.1
-  rp_fails validate-tag 9.9.9-r1-bwrap.1-dev.1
+  rp_fails validate-tag 9.9.9-r1-bwrap.1-devkit.1
   rp_fails validate-tag bogus
   rp_fails validate-tag v1.0.0
 
   # a release that already carries the current pin: nothing to publish
-  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-dev.1 rp_ok validate-tag 1.2.3-rc.4-r1-bwrap.1-dev.1
-  git -C "${t}" tag 1.2.3-rc.4-r1-bwrap.1-dev.1 "${c1}"
-  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-dev.1 rp_ok upstream-changed "${c2}"      # pin differs from last release
-  git -C "${t}" tag 1.2.3-rc.4-r1-bwrap.1-dev.2 "${c2}"
-  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-dev.2 rp_fails upstream-changed "${c1}"   # same pin as last release
+  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-devkit.1 rp_ok validate-tag 1.2.3-rc.4-r1-bwrap.1-devkit.1
+  git -C "${t}" tag 1.2.3-rc.4-r1-bwrap.1-devkit.1 "${c1}"
+  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-devkit.1 rp_ok upstream-changed "${c2}"      # pin differs from last release
+  git -C "${t}" tag 1.2.3-rc.4-r1-bwrap.1-devkit.2 "${c2}"
+  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-devkit.2 rp_fails upstream-changed "${c1}"   # same pin as last release
   RELEASE_PLAN_LAST_RELEASE='' rp_ok upstream-changed "${c1}"                                  # no release: compare with BEFORE
   RELEASE_PLAN_LAST_RELEASE='' rp_fails upstream-changed "${c2}"
   RELEASE_PLAN_LAST_RELEASE='' rp_fails upstream-changed 0000000000000000000000000000000000000000  # nothing to compare: never publish
   RELEASE_PLAN_LAST_RELEASE='' rp_fails upstream-changed
 
-  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-dev.1 rp_is publish=true  decide push refs/heads/main "${c2}"
-  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-dev.2 rp_is publish=false decide push refs/heads/main "${c2}"
-  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-dev.1 rp_is publish=false decide push refs/heads/other "${c2}"
+  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-devkit.1 rp_is publish=true  decide push refs/heads/main "${c2}"
+  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-devkit.2 rp_is publish=false decide push refs/heads/main "${c2}"
+  RELEASE_PLAN_LAST_RELEASE=1.2.3-rc.4-r1-bwrap.1-devkit.1 rp_is publish=false decide push refs/heads/other "${c2}"
   rp_is publish=false decide pull_request refs/pull/1/merge "${c1}"
   rp_is publish=true  decide schedule refs/heads/main ""
   rp_is publish=true  decide workflow_dispatch refs/heads/main ""

@@ -9,7 +9,7 @@ name: CI
 # `review-gate` (see the job below).
 #
 # Publishing pushes each architecture by digest, then a multi-arch manifest as
-# louisremi/deepseek-harness-devkit:<upstream-tag>-dev.<N> and :latest. It
+# louisremi/deepseek-harness-devkit:<upstream-tag>-devkit.<N> and :latest. It
 # happens only when `validate` decides so (scripts/release-plan.sh):
 #   - push to main that changed the upstream base image pin (tag or digest)
 #     since the latest GitHub release -> publish, then create that release
@@ -17,7 +17,7 @@ name: CI
 #   - weekly schedule / manual dispatch on main -> same, but only if
 #     /opt/devtools/MANIFEST.txt differs from :latest (e.g. Debian security
 #     updates; tool bumps merged meanwhile ship too), so no empty tags appear;
-#   - a GitHub Release created by hand (tag = the next <upstream>-dev.<N>,
+#   - a GitHub Release created by hand (tag = the next <upstream>-devkit.<N>,
 #     commit on main) -> publish that tag. Releases created by this workflow's
 #     GITHUB_TOKEN do not trigger the release event, so there is no loop.
 # Any other push to main (tool, npm, pip, action bumps) builds and smoke-tests

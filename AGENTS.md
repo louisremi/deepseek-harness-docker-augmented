@@ -24,7 +24,7 @@ It builds `docker.io/louisremi/deepseek-harness-devkit`: the upstream
 
 Everything is pinned, and Renovate keeps every pin current. CI builds amd64
 and arm64 on native runners, smoke-tests them, and publishes
-`<upstream-tag>-dev.<N>` plus `latest` when an upstream bump merges, on the
+`<upstream-tag>-devkit.<N>` plus `latest` when an upstream bump merges, on the
 weekly run if the image changed, or when a maintainer creates a GitHub Release.
 Each publish has a GitHub Release of the same name.
 
@@ -39,7 +39,7 @@ Each publish has a GitHub Release of the same name.
 | `scripts/static-check.sh [--online]` | All checks that need no Docker daemon. **Run it before every push.** |
 | `scripts/smoke.sh <image>` | Runtime smoke test (needs Docker; CI runs it on both arches). |
 | `scripts/write-manifest.sh` | Produces `/opt/devtools/MANIFEST.txt`, the inventory used to skip no-op weekly publishes. |
-| `scripts/next-tag.sh` | Computes the next `<upstream>-dev.<N>` tag. |
+| `scripts/next-tag.sh` | Computes the next `<upstream>-devkit.<N>` tag. |
 | `scripts/release-plan.sh` | Publish decision and release-tag validation used by `ci.yml` (offline-tested by `static-check.sh`). |
 | `.github/release.yml` | Categories for generated release notes. |
 | `renovate.json5`, `.github/renovate-global.json5` | Update detection. |
@@ -100,7 +100,7 @@ No Docker? Push to a branch with an open PR and let CI build it:
 
 ## Tag scheme
 
-`<upstream-tag>-dev.<N>`, e.g. `0.2.1-alpha.1-r1-bwrap.1-dev.3` (the upstream tag includes its `-bwrap.M` suffix). N counts publishes on
+`<upstream-tag>-devkit.<N>`, e.g. `0.2.1-alpha.1-r1-bwrap.1-devkit.3` (the upstream tag includes its `-bwrap.M` suffix). N counts publishes on
 the same upstream tag (tool bumps, Debian security rebuilds). `latest` always
 points at the newest publish. `scripts/next-tag.sh` computes it; never
 publish by hand over an existing tag. Publishing is release-driven: only an

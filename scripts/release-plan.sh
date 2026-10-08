@@ -7,7 +7,7 @@
 #   release-plan.sh last-release                newest non-draft GitHub release tag (empty if none)
 #   release-plan.sh upstream-changed BEFORE     exit 0 if the base image pin differs from the last
 #                                               release (or from BEFORE when there is no release yet)
-#   release-plan.sh validate-tag TAG [REV]      TAG must be <upstream-tag at REV>-dev.<N>, N >= 1
+#   release-plan.sh validate-tag TAG [REV]      TAG must be <upstream-tag at REV>-devkit.<N>, N >= 1
 #   release-plan.sh tag-free TAG [REPO]         exit 0 if TAG is not on Docker Hub yet
 #   release-plan.sh decide EVENT REF BEFORE     print `publish=true|false` for a CI run
 #
@@ -56,8 +56,8 @@ upstream_changed() {
 validate_tag() {
   local tag="${1:-}" rev="${2:-}" up
   up="$(upstream_tag "${rev}")"
-  if [[ "${tag}" != "${up}"-dev.* || ! "${tag#"${up}"-dev.}" =~ ^[1-9][0-9]*$ ]]; then
-    die "release tag '${tag}' must be '${up}-dev.<N>' (N >= 1); the next free one is printed by scripts/next-tag.sh"
+  if [[ "${tag}" != "${up}"-devkit.* || ! "${tag#"${up}"-devkit.}" =~ ^[1-9][0-9]*$ ]]; then
+    die "release tag '${tag}' must be '${up}-devkit.<N>' (N >= 1); the next free one is printed by scripts/next-tag.sh"
   fi
 }
 
