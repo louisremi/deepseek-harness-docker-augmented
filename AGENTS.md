@@ -39,6 +39,7 @@ Each publish has a GitHub Release of the same name.
 | `scripts/static-check.sh [--online]` | All checks that need no Docker daemon. **Run it before every push.** |
 | `scripts/smoke.sh <image>` | Runtime smoke test (needs Docker; CI runs it on both arches). |
 | `scripts/write-manifest.sh` | Produces `/opt/devtools/MANIFEST.txt`, the inventory used to skip no-op weekly publishes. |
+| `scripts/tag-scheme.sh` | The image name and tag suffix, defined once (sourced by `next-tag.sh` and `release-plan.sh`). |
 | `scripts/next-tag.sh` | Computes the next `<upstream>-augmented.<N>` tag. |
 | `scripts/release-plan.sh` | Publish decision and release-tag validation used by `ci.yml` (offline-tested by `static-check.sh`). |
 | `.github/release.yml` | Categories for generated release notes. |
@@ -104,7 +105,8 @@ No Docker? Push to a branch with an open PR and let CI build it:
 the same upstream tag (tool bumps, Debian security rebuilds). `latest` always
 points at the newest publish. `scripts/next-tag.sh` computes it; never
 publish by hand over an existing tag (CI re-checks that the tag is free right
-before pushing it). Publishing is release-driven: only an
+before pushing it). Earlier schemes (`-dev.N` on `louisremi/deepseek-harness-dev`
+and `-devkit`) are retired: they are neither publishable nor a release baseline. Publishing is release-driven: only an
 upstream-pin change on `main`, the weekly run (if the manifest changed) and a
 maintainer-created GitHub Release publish. A tool/library bump merging does not
 publish by itself, and agents never create releases.

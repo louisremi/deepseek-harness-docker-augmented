@@ -5,6 +5,10 @@
 a dsh plugin and a developer toolbox. It rebuilds itself whenever upstream or any bundled
 tool releases.
 
+> Previously published as `louisremi/deepseek-harness-dev` and
+> `louisremi/deepseek-harness-devkit` (tags `…-dev.N`). Those repositories are
+> deprecated and get no new tags; pull `louisremi/deepseek-harness-augmented`.
+
 ## What's added on top of upstream
 
 **Patches**

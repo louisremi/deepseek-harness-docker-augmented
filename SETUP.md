@@ -71,7 +71,9 @@ If a guard rejects it, the release stays on GitHub with no image: delete it
 name is not `<upstream-tag>-augmented.<N>` or whose commit is not on `main` are
 ignored when CI looks for the previous release.
 Optionally add a tag ruleset (Settings → Rules) restricting who may create
-`*-augmented.*` tags, since a release triggers a publish.
+`*-augmented.*` tags, since a release triggers a publish. Its pattern must
+follow `TAG_SUFFIX` in [scripts/tag-scheme.sh](scripts/tag-scheme.sh) if the
+scheme is ever renamed.
 
 ## Afterwards
 

@@ -1,5 +1,6 @@
 # Example service for louisremi/deepseek-harness-augmented. Mirrors upstream's
 # hardened compose.yaml and adds the security_opt values bubblewrap needs.
+# (Formerly louisremi/deepseek-harness-dev / -devkit, both deprecated.)
 #
 #   DSH_WORKSPACE=/absolute/path/to/project docker compose -f compose.example.yaml up -d
 #   docker compose -f compose.example.yaml logs deepseek-harness | grep 'dsh web:'

@@ -56,6 +56,21 @@ else
   ok "bwrap upstream variant (not market/ungoogled)"
 fi
 
+step "tag scheme (scripts/tag-scheme.sh)"
+tag_scheme_consistent() {
+  local IMAGE_REPO TAG_SUFFIX rc=0
+  # shellcheck source=scripts/tag-scheme.sh
+  . scripts/tag-scheme.sh
+  grep -qxF "  IMAGE: docker.io/${IMAGE_REPO}" .github/workflows/ci.yml \
+    || { echo "  ci.yml IMAGE is not docker.io/${IMAGE_REPO}" >&2; rc=1; }
+  # The suffix and image name must only be spelled in tag-scheme.sh.
+  if grep -nF -e "-${TAG_SUFFIX}." -e "${IMAGE_REPO}" scripts/next-tag.sh scripts/release-plan.sh >&2; then
+    echo "  hardcoded image name or tag suffix above; use IMAGE_REPO / TAG_SUFFIX" >&2; rc=1
+  fi
+  return "${rc}"
+}
+check "image name and tag suffix defined once, ci.yml agrees" tag_scheme_consistent
+
 step "release planning (scripts/release-plan.sh)"
 release_plan_tests() {
   local t fb rc=0 pin1 pin2 c1 c2 rp="${root}/scripts/release-plan.sh" up=1.2.3-rc.4-r1-bwrap.1
@@ -96,6 +111,8 @@ release_plan_tests() {
   rp_fails validate-tag "${up}-augmented.x"
   rp_fails validate-tag "${up}-augmented."
   rp_fails validate-tag "${up}"
+  rp_fails validate-tag "${up}-devkit.1"                                     # retired schemes are not publishable
+  rp_fails validate-tag "${up}-dev.1"
   rp_fails validate-tag 9.9.9-r1-bwrap.1-augmented.1
   rp_fails validate-tag bogus
   rp_fails validate-tag v1.0.0
@@ -113,6 +130,7 @@ release_plan_tests() {
   r_is "bogus"$'\n'"${t2}" "${t2}" last-release                           # a stray, non-augmented release is ignored
   r_is "${up}-augmented.8"$'\n'"${t1}" "${t1}" last-release                   # tagged commit not on main is ignored
   r_is "" "" last-release                                                   # no release at all
+  r_is "${up}-devkit.3" "" last-release                                     # retired-scheme tags are never a baseline (none were released)
 
   # upstream-changed: compare with the last release, else with BEFORE, else never publish
   r_ok    "${t1}" upstream-changed "${c2}"                                  # pin differs from last release
