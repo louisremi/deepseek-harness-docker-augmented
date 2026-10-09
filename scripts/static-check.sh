@@ -56,6 +56,115 @@ else
   ok "bwrap upstream variant (not market/ungoogled)"
 fi
 
+step "release planning (scripts/release-plan.sh)"
+release_plan_tests() {
+  local t fb rc=0 pin1 pin2 c1 c2 rp="${root}/scripts/release-plan.sh" up=1.2.3-rc.4-r1-bwrap.1
+  t="$(mktemp -d)"; fb="$(mktemp -d)"
+  pin1='ARG DSH_BASE_IMAGE=docker.io/runzhliu/deepseek-harness:'"${up}"'@sha256:'"$(printf 'a%.0s' {1..64})"
+  pin2='ARG DSH_BASE_IMAGE=docker.io/runzhliu/deepseek-harness:'"${up}"'@sha256:'"$(printf 'b%.0s' {1..64})"
+  (
+    set -e
+    cd "${t}"
+    git init -q -b main .
+    git config user.email t@t; git config user.name t
+    printf '%s\nRUN true\n' "${pin1}" > Dockerfile; git add Dockerfile; git commit -qm one
+    printf '%s\nRUN echo tools\n' "${pin1}" > Dockerfile; git commit -qam tools
+  ) >/dev/null 2>&1 || rc=1
+  c1="$(git -C "${t}" rev-parse HEAD~1 2>/dev/null)" || rc=1
+  printf '%s\nRUN echo tools\n' "${pin2}" > "${t}/Dockerfile"
+  git -C "${t}" commit -qam upstream >/dev/null 2>&1 || rc=1
+  c2="$(git -C "${t}" rev-parse HEAD 2>/dev/null)" || rc=1
+  git -C "${t}" branch -q side "${c1}" >/dev/null 2>&1 || rc=1
+  # Every call gets its environment explicitly; nothing is exported. RELEASES
+  # replaces the `gh release list` lookup (newline-separated tags, newest first).
+  rp_env() { env RELEASE_PLAN_ROOT="${t}" RELEASE_PLAN_MAIN=main RELEASE_PLAN_RETRY_DELAY=0 "$@"; }
+  rp_is() { local want="$1"; shift; [[ "$(rp_env "${rp}" "$@" 2>/dev/null)" == "${want}" ]] || { echo "  unexpected result: release-plan.sh $*" >&2; rc=1; }; }
+  rp_fails() { if rp_env "${rp}" "$@" >/dev/null 2>&1; then echo "  should have failed: release-plan.sh $*" >&2; rc=1; fi; }
+  rp_ok() { rp_env "${rp}" "$@" >/dev/null 2>&1 || { echo "  should have passed: release-plan.sh $*" >&2; rc=1; }; }
+  with_releases() { local r="$1"; shift; rp_env RELEASE_PLAN_RELEASES="${r}" "$@"; }
+  r_is() { local r="$1" want="$2"; shift 2; [[ "$(with_releases "${r}" "${rp}" "$@" 2>/dev/null)" == "${want}" ]] || { echo "  unexpected result (releases: ${r:-none}): release-plan.sh $*" >&2; rc=1; }; }
+  r_fails() { local r="$1"; shift; if with_releases "${r}" "${rp}" "$@" >/dev/null 2>&1; then echo "  should have failed (releases: ${r:-none}): release-plan.sh $*" >&2; rc=1; fi; }
+  r_ok() { local r="$1"; shift; with_releases "${r}" "${rp}" "$@" >/dev/null 2>&1 || { echo "  should have passed (releases: ${r:-none}): release-plan.sh $*" >&2; rc=1; }; }
+  d_is() { local want="$1"; shift; r_is "$1" "${want}" "${@:2}"; }   # d_is WANT RELEASES args...
+  local t1="${up}-devkit.1" t2="${up}-devkit.2"
+
+  rp_is "${up}" upstream-tag
+  rp_ok validate-tag "${up}-devkit.1"
+  rp_ok validate-tag "${up}-devkit.12"
+  rp_fails validate-tag "${up}-devkit.0"
+  rp_fails validate-tag "${up}-devkit.01"
+  rp_fails validate-tag "${up}-devkit.x"
+  rp_fails validate-tag "${up}-devkit."
+  rp_fails validate-tag "${up}"
+  rp_fails validate-tag 9.9.9-r1-bwrap.1-devkit.1
+  rp_fails validate-tag bogus
+  rp_fails validate-tag v1.0.0
+
+  git -C "${t}" tag "${t1}" "${c1}"
+  git -C "${t}" tag "${t2}" "${c2}"
+  git -C "${t}" tag bogus "${c2}"
+  git -C "${t}" tag "${up}-devkit.9" side # on a branch that is not main
+  git -C "${t}" branch -q -f side "${c1}"
+  git -C "${t}" checkout -q --detach "${c1}" && git -C "${t}" commit -q --allow-empty -m stray && git -C "${t}" tag "${up}-devkit.8" HEAD
+  git -C "${t}" checkout -q main
+
+  # last-release: newest *valid* release; strays and failed hand-made releases are skipped
+  r_is "${t2}"$'\n'"${t1}" "${t2}" last-release
+  r_is "bogus"$'\n'"${t2}" "${t2}" last-release                           # a stray, non-devkit release is ignored
+  r_is "${up}-devkit.8"$'\n'"${t1}" "${t1}" last-release                   # tagged commit not on main is ignored
+  r_is "" "" last-release                                                   # no release at all
+
+  # upstream-changed: compare with the last release, else with BEFORE, else never publish
+  r_ok    "${t1}" upstream-changed "${c2}"                                  # pin differs from last release
+  r_fails "${t2}" upstream-changed "${c1}"                                  # same pin as last release
+  r_ok    "" upstream-changed "${c1}"                                       # no release: compare with BEFORE
+  r_fails "" upstream-changed "${c2}"
+  r_fails "" upstream-changed 0000000000000000000000000000000000000000      # nothing to compare: never publish
+  r_fails "" upstream-changed
+  r_ok    "bogus"$'\n'"${t1}" upstream-changed "${c2}"                      # a stray release is not the baseline
+
+  # decide: HEAD is the tip of main
+  d_is "$(printf 'publish=true\nlatest=true')"   "${t1}" decide push refs/heads/main "${c2}"
+  d_is "$(printf 'publish=false\nlatest=false')" "${t2}" decide push refs/heads/main "${c2}"
+  d_is "$(printf 'publish=false\nlatest=false')" "${t1}" decide push refs/heads/other "${c2}"
+  d_is "$(printf 'publish=false\nlatest=false')" ""      decide pull_request refs/pull/1/merge "${c1}"
+  d_is "$(printf 'publish=true\nlatest=true')"   ""      decide schedule refs/heads/main ""
+  d_is "$(printf 'publish=true\nlatest=true')"   ""      decide workflow_dispatch refs/heads/main ""
+  d_is "$(printf 'publish=false\nlatest=false')" ""      decide workflow_dispatch refs/heads/feature ""
+  d_is "$(printf 'publish=true\nlatest=true')"   ""      decide release refs/tags/x ""
+
+  # decide: a run for an older commit (re-run, or main moved on) never publishes
+  git -C "${t}" checkout -q --detach "${c1}"
+  d_is "$(printf 'publish=false\nlatest=false')" "${t1}" decide push refs/heads/main "${c1}"
+  d_is "$(printf 'publish=false\nlatest=false')" ""      decide schedule refs/heads/main ""
+  d_is "$(printf 'publish=false\nlatest=false')" ""      decide workflow_dispatch refs/heads/main ""
+  # a release on an older commit of main is published, but does not move latest
+  d_is "$(printf 'publish=true\nlatest=false')"  ""      decide release refs/tags/x ""
+  git -C "${t}" checkout -q main
+
+  # a failing GitHub API is fatal, never a silent "nothing to publish"
+  printf '#!/bin/sh\necho "HTTP 502" >&2\nexit 1\n' > "${fb}/gh"; chmod +x "${fb}/gh"
+  if PATH="${fb}:${PATH}" rp_env "${rp}" decide push refs/heads/main "${c1}" >/dev/null 2>&1; then
+    echo "  decide must fail when 'gh release list' fails" >&2; rc=1
+  fi
+  if PATH="${fb}:${PATH}" rp_env "${rp}" last-release >/dev/null 2>&1; then
+    echo "  last-release must fail when 'gh release list' fails" >&2; rc=1
+  fi
+  # a failing API must not be mistaken for "no release" in release-free either
+  if PATH="${fb}:${PATH}" rp_env "${rp}" release-free "${t1}" >/dev/null 2>&1; then
+    echo "  release-free must fail when 'gh release view' fails" >&2; rc=1
+  fi
+  printf '#!/bin/sh\necho "release not found" >&2\nexit 1\n' > "${fb}/gh"
+  PATH="${fb}:${PATH}" rp_env "${rp}" release-free "${t1}" >/dev/null 2>&1 || { echo "  release-free should pass when the release does not exist" >&2; rc=1; }
+  printf '#!/bin/sh\necho "tag: x"\nexit 0\n' > "${fb}/gh"
+  if PATH="${fb}:${PATH}" rp_env "${rp}" release-free "${t1}" >/dev/null 2>&1; then
+    echo "  release-free must fail when the release exists" >&2; rc=1
+  fi
+  rm -rf "${t}" "${fb}"
+  return "${rc}"
+}
+check "tag validation and publish decisions" release_plan_tests
+
 step "release binary checksums"
 check "checksum ARGs well-formed" python3 scripts/refresh-checksums.py --check
 

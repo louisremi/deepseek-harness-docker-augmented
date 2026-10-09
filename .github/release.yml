@@ -1,0 +1,12 @@
+# Categories for GitHub's generated release notes (`gh release create
+# --generate-notes`, the "Generate release notes" button, and the release job
+# in ci.yml). Every change reaches main through a PR, so the PR list since the
+# previous release is the changelog. Renovate sets the labels (renovate.json5).
+changelog:
+  categories:
+    - title: Upstream DeepSeek Harness
+      labels: [upstream]
+    - title: Dependencies
+      labels: [renovate]
+    - title: Other changes
+      labels: ["*"]

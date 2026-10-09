@@ -3,6 +3,8 @@
 // Renovate (self-hosted, .github/workflows/renovate.yml) is the update
 // detector: it watches the upstream DSH image and every tool baked into our
 // image, opens one PR per update, and GitHub auto-merges it once CI is green.
+// Publishing is decided by ci.yml (upstream pin change, weekly run, manual
+// release), not here.
 // Global-only options (allowedCommands, ...) live in .github/renovate-global.json5.
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
