@@ -9,7 +9,7 @@ name: CI
 # `review-gate` (see the job below).
 #
 # Publishing pushes each architecture by digest, then a multi-arch manifest as
-# louisremi/deepseek-harness-devkit:<upstream-tag>-devkit.<N> and :latest. It
+# louisremi/deepseek-harness-augmented:<upstream-tag>-augmented.<N> and :latest. It
 # happens only when `validate` decides so (scripts/release-plan.sh):
 #   - push to main that changed the upstream base image pin (tag or digest)
 #     since the latest GitHub release -> publish, then create that release
@@ -18,7 +18,7 @@ name: CI
 #     /opt/devtools/MANIFEST.txt differs from :latest (e.g. Debian security
 #     updates; tool bumps merged meanwhile ship too), so no empty tags appear;
 #     a dispatch with `force_publish` skips that comparison;
-#   - a GitHub Release created by hand (tag = the next <upstream>-devkit.<N>,
+#   - a GitHub Release created by hand (tag = the next <upstream>-augmented.<N>,
 #     commit on main) -> publish that tag. Releases created by this workflow's
 #     GITHUB_TOKEN do not trigger the release event, so there is no loop.
 # Push, schedule and dispatch runs publish only the tip of main, so re-running
@@ -53,7 +53,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  IMAGE: docker.io/louisremi/deepseek-harness-devkit
+  IMAGE: docker.io/louisremi/deepseek-harness-augmented
 
 jobs:
   # Human-review gate from maintainer-agent (reusable workflow). Only a pure
@@ -199,7 +199,7 @@ jobs:
           platforms: linux/${{ matrix.arch }}
           load: true
           pull: true
-          tags: deepseek-harness-devkit:ci
+          tags: deepseek-harness-augmented:ci
           build-args: |
             IMAGE_REVISION=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.arch }}
@@ -207,13 +207,13 @@ jobs:
 
       - name: Smoke test
         if: env.ENABLED == 'true'
-        run: scripts/smoke.sh deepseek-harness-devkit:ci
+        run: scripts/smoke.sh deepseek-harness-augmented:ci
 
       - name: Extract image manifest
         if: env.ENABLED == 'true'
         run: |
           mkdir -p out
-          docker run --rm --entrypoint cat deepseek-harness-devkit:ci /opt/devtools/MANIFEST.txt > "out/manifest-${{ matrix.arch }}.txt"
+          docker run --rm --entrypoint cat deepseek-harness-augmented:ci /opt/devtools/MANIFEST.txt > "out/manifest-${{ matrix.arch }}.txt"
 
       - name: Push by digest
         id: push

@@ -8,7 +8,7 @@ Day-to-day use is in [README.md](README.md); development is in
 
 1. **Docker Hub:** secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (access
    token with read/write). The first publish creates the public repository
-   `louisremi/deepseek-harness-devkit`.
+   `louisremi/deepseek-harness-augmented`.
 2. **Renovate** runs as a private GitHub App of your own (Settings → Developer
    settings → GitHub Apps → New GitHub App):
    - Webhook: uncheck *Active* (the URL is then no longer required). No
@@ -42,7 +42,7 @@ Day-to-day use is in [README.md](README.md); development is in
 ## The same settings via `gh`
 
 ```bash
-R=louisremi/deepseek-harness-docker-devkit
+R=louisremi/deepseek-harness-docker-augmented
 gh repo edit $R --enable-auto-merge --delete-branch-on-merge
 gh secret set DOCKERHUB_USERNAME -R $R; gh secret set DOCKERHUB_TOKEN -R $R
 gh variable set RENOVATE_APP_CLIENT_ID -R $R
@@ -65,13 +65,13 @@ Publishing needs no extra secrets: `ci.yml` pushes with the Docker Hub secrets
 above and creates releases with the workflow's own `GITHUB_TOKEN`
 (`contents: write` on the `publish` job only). A release created by hand
 (`gh release create "$(scripts/next-tag.sh)" --generate-notes`) is built from
-its commit, which must be on `main`, and must be tagged `<upstream-tag>-devkit.<N>`.
+its commit, which must be on `main`, and must be tagged `<upstream-tag>-augmented.<N>`.
 If a guard rejects it, the release stays on GitHub with no image: delete it
 (`gh release delete <tag> --cleanup-tag`) and create it again. Releases whose
-name is not `<upstream-tag>-devkit.<N>` or whose commit is not on `main` are
+name is not `<upstream-tag>-augmented.<N>` or whose commit is not on `main` are
 ignored when CI looks for the previous release.
 Optionally add a tag ruleset (Settings → Rules) restricting who may create
-`*-devkit.*` tags, since a release triggers a publish.
+`*-augmented.*` tags, since a release triggers a publish.
 
 ## Afterwards
 
