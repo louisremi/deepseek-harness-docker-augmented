@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke-test a built louisremi/deepseek-harness-devkit image.
+# Smoke-test a built louisremi/deepseek-harness-augmented image.
 #
 #   scripts/smoke.sh <image>
 #

@@ -4,13 +4,13 @@
 #
 #   release-plan.sh base-line [REV]             the `ARG DSH_BASE_IMAGE=` line at REV (default: working tree)
 #   release-plan.sh upstream-tag [REV]          the upstream image tag in it
-#   release-plan.sh last-release                newest non-draft release named <upstream>-devkit.<N>
+#   release-plan.sh last-release                newest non-draft release named <upstream>-<suffix>.<N>
 #                                               whose commit is on main (empty if none). Anything else
 #                                               (a stray or failed hand-made release) is ignored.
 #                                               Fails if the GitHub API does; never guesses.
 #   release-plan.sh upstream-changed BEFORE     exit 0 if the base image pin differs from the last
 #                                               release (or from BEFORE when there is no release yet)
-#   release-plan.sh validate-tag TAG [REV]      TAG must be <upstream-tag at REV>-devkit.<N>, N >= 1
+#   release-plan.sh validate-tag TAG [REV]      TAG must be <upstream-tag at REV>-<suffix>.<N>, N >= 1
 #   release-plan.sh tag-free TAG [REPO]         exit 0 if TAG is not on Docker Hub yet
 #   release-plan.sh release-free TAG            exit 0 if no GitHub release named TAG exists
 #   release-plan.sh decide EVENT REF BEFORE     print `publish=true|false` and `latest=true|false`
@@ -25,6 +25,9 @@
 set -euo pipefail
 
 root="${RELEASE_PLAN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+# Image name and tag suffix (always from this checkout, even under RELEASE_PLAN_ROOT).
+# shellcheck source=scripts/tag-scheme.sh
+. "$(dirname "$0")/tag-scheme.sh"
 
 die() { echo "release-plan: $*" >&2; exit 1; }
 
@@ -73,7 +76,7 @@ last_release() {
   local tags tag sha tip
   tags="$(release_tags)" || exit 1
   while IFS= read -r tag; do
-    [[ "${tag}" =~ -devkit\.[1-9][0-9]*$ ]] || continue
+    [[ "${tag}" =~ -${TAG_SUFFIX}\.[1-9][0-9]*$ ]] || continue
     # Resolvable and not an ancestor of main: a release made from a stray commit.
     if sha="$(git -C "${root}" rev-parse --verify -q "${tag}^{commit}")" \
       && tip="$(git -C "${root}" rev-parse --verify -q "$(main_ref)^{commit}")" \
@@ -103,13 +106,13 @@ upstream_changed() {
 validate_tag() {
   local tag="${1:-}" rev="${2:-}" up
   up="$(upstream_tag "${rev}")"
-  if [[ "${tag}" != "${up}"-devkit.* || ! "${tag#"${up}"-devkit.}" =~ ^[1-9][0-9]*$ ]]; then
-    die "release tag '${tag}' must be '${up}-devkit.<N>' (N >= 1); the next free one is printed by scripts/next-tag.sh"
+  if [[ "${tag}" != "${up}-${TAG_SUFFIX}".* || ! "${tag#"${up}-${TAG_SUFFIX}".}" =~ ^[1-9][0-9]*$ ]]; then
+    die "release tag '${tag}' must be '${up}-${TAG_SUFFIX}.<N>' (N >= 1); the next free one is printed by scripts/next-tag.sh"
   fi
 }
 
 tag_free() {
-  local tag="${1:?tag}" repo="${2:-louisremi/deepseek-harness-devkit}" code
+  local tag="${1:?tag}" repo="${2:-${IMAGE_REPO}}" code
   code="$(curl --silent --retry 3 --output /dev/null --write-out '%{http_code}' \
     "https://hub.docker.com/v2/repositories/${repo}/tags/${tag}" || true)"
   case "${code}" in

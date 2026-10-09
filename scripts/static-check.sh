@@ -56,6 +56,21 @@ else
   ok "bwrap upstream variant (not market/ungoogled)"
 fi
 
+step "tag scheme (scripts/tag-scheme.sh)"
+tag_scheme_consistent() {
+  local IMAGE_REPO TAG_SUFFIX rc=0
+  # shellcheck source=scripts/tag-scheme.sh
+  . scripts/tag-scheme.sh
+  grep -qxF "  IMAGE: docker.io/${IMAGE_REPO}" .github/workflows/ci.yml \
+    || { echo "  ci.yml IMAGE is not docker.io/${IMAGE_REPO}" >&2; rc=1; }
+  # The suffix and image name must only be spelled in tag-scheme.sh.
+  if grep -nF -e "-${TAG_SUFFIX}." -e "${IMAGE_REPO}" scripts/next-tag.sh scripts/release-plan.sh >&2; then
+    echo "  hardcoded image name or tag suffix above; use IMAGE_REPO / TAG_SUFFIX" >&2; rc=1
+  fi
+  return "${rc}"
+}
+check "image name and tag suffix defined once, ci.yml agrees" tag_scheme_consistent
+
 step "release planning (scripts/release-plan.sh)"
 release_plan_tests() {
   local t fb rc=0 pin1 pin2 c1 c2 rp="${root}/scripts/release-plan.sh" up=1.2.3-rc.4-r1-bwrap.1
@@ -86,33 +101,36 @@ release_plan_tests() {
   r_fails() { local r="$1"; shift; if with_releases "${r}" "${rp}" "$@" >/dev/null 2>&1; then echo "  should have failed (releases: ${r:-none}): release-plan.sh $*" >&2; rc=1; fi; }
   r_ok() { local r="$1"; shift; with_releases "${r}" "${rp}" "$@" >/dev/null 2>&1 || { echo "  should have passed (releases: ${r:-none}): release-plan.sh $*" >&2; rc=1; }; }
   d_is() { local want="$1"; shift; r_is "$1" "${want}" "${@:2}"; }   # d_is WANT RELEASES args...
-  local t1="${up}-devkit.1" t2="${up}-devkit.2"
+  local t1="${up}-augmented.1" t2="${up}-augmented.2"
 
   rp_is "${up}" upstream-tag
-  rp_ok validate-tag "${up}-devkit.1"
-  rp_ok validate-tag "${up}-devkit.12"
-  rp_fails validate-tag "${up}-devkit.0"
-  rp_fails validate-tag "${up}-devkit.01"
-  rp_fails validate-tag "${up}-devkit.x"
-  rp_fails validate-tag "${up}-devkit."
+  rp_ok validate-tag "${up}-augmented.1"
+  rp_ok validate-tag "${up}-augmented.12"
+  rp_fails validate-tag "${up}-augmented.0"
+  rp_fails validate-tag "${up}-augmented.01"
+  rp_fails validate-tag "${up}-augmented.x"
+  rp_fails validate-tag "${up}-augmented."
   rp_fails validate-tag "${up}"
-  rp_fails validate-tag 9.9.9-r1-bwrap.1-devkit.1
+  rp_fails validate-tag "${up}-devkit.1"                                     # retired schemes are not publishable
+  rp_fails validate-tag "${up}-dev.1"
+  rp_fails validate-tag 9.9.9-r1-bwrap.1-augmented.1
   rp_fails validate-tag bogus
   rp_fails validate-tag v1.0.0
 
   git -C "${t}" tag "${t1}" "${c1}"
   git -C "${t}" tag "${t2}" "${c2}"
   git -C "${t}" tag bogus "${c2}"
-  git -C "${t}" tag "${up}-devkit.9" side # on a branch that is not main
+  git -C "${t}" tag "${up}-augmented.9" side # on a branch that is not main
   git -C "${t}" branch -q -f side "${c1}"
-  git -C "${t}" checkout -q --detach "${c1}" && git -C "${t}" commit -q --allow-empty -m stray && git -C "${t}" tag "${up}-devkit.8" HEAD
+  git -C "${t}" checkout -q --detach "${c1}" && git -C "${t}" commit -q --allow-empty -m stray && git -C "${t}" tag "${up}-augmented.8" HEAD
   git -C "${t}" checkout -q main
 
   # last-release: newest *valid* release; strays and failed hand-made releases are skipped
   r_is "${t2}"$'\n'"${t1}" "${t2}" last-release
-  r_is "bogus"$'\n'"${t2}" "${t2}" last-release                           # a stray, non-devkit release is ignored
-  r_is "${up}-devkit.8"$'\n'"${t1}" "${t1}" last-release                   # tagged commit not on main is ignored
+  r_is "bogus"$'\n'"${t2}" "${t2}" last-release                           # a stray, non-augmented release is ignored
+  r_is "${up}-augmented.8"$'\n'"${t1}" "${t1}" last-release                   # tagged commit not on main is ignored
   r_is "" "" last-release                                                   # no release at all
+  r_is "${up}-devkit.3" "" last-release                                     # retired-scheme tags are never a baseline (none were released)
 
   # upstream-changed: compare with the last release, else with BEFORE, else never publish
   r_ok    "${t1}" upstream-changed "${c2}"                                  # pin differs from last release

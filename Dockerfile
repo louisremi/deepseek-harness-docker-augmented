@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# louisremi/deepseek-harness-devkit
+# louisremi/deepseek-harness-augmented
 #
 # runzhliu/deepseek-harness (bubblewrap variant) + one local patch + HolyClaude
 # "slim" developer tooling + the dsh-docker-adapter plugin in the `web`
@@ -235,10 +235,10 @@ ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/devto
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # ---------- Manifest (drives "publish only when something changed") --------
-COPY scripts/write-manifest.sh /usr/local/lib/deepseek-harness-devkit/write-manifest.sh
+COPY scripts/write-manifest.sh /usr/local/lib/deepseek-harness-augmented/write-manifest.sh
 RUN set -eux; \
-    chmod 0755 /usr/local/lib/deepseek-harness-devkit/write-manifest.sh; \
-    DSH_BASE_IMAGE="${DSH_BASE_IMAGE}" /usr/local/lib/deepseek-harness-devkit/write-manifest.sh > /opt/devtools/MANIFEST.txt; \
+    chmod 0755 /usr/local/lib/deepseek-harness-augmented/write-manifest.sh; \
+    DSH_BASE_IMAGE="${DSH_BASE_IMAGE}" /usr/local/lib/deepseek-harness-augmented/write-manifest.sh > /opt/devtools/MANIFEST.txt; \
     test -s /opt/devtools/MANIFEST.txt
 
 USER node
@@ -249,11 +249,11 @@ ARG IMAGE_VERSION=dev
 ARG IMAGE_REVISION=unknown
 LABEL org.opencontainers.image.title="DeepSeek Harness (dev tooling + SameSite=Lax)" \
       org.opencontainers.image.description="runzhliu/deepseek-harness (bubblewrap variant) with a SameSite=Lax session cookie and HolyClaude-slim developer tooling" \
-      org.opencontainers.image.source="https://github.com/louisremi/deepseek-harness-docker-devkit" \
-      org.opencontainers.image.url="https://github.com/louisremi/deepseek-harness-docker-devkit" \
+      org.opencontainers.image.source="https://github.com/louisremi/deepseek-harness-docker-augmented" \
+      org.opencontainers.image.url="https://github.com/louisremi/deepseek-harness-docker-augmented" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${IMAGE_VERSION}" \
       org.opencontainers.image.revision="${IMAGE_REVISION}" \
       org.opencontainers.image.base.name="${DSH_BASE_IMAGE}" \
-      io.github.louisremi.deepseek-harness-devkit.patches="samesite-lax"
+      io.github.louisremi.deepseek-harness-augmented.patches="samesite-lax"
 # ENTRYPOINT / CMD are inherited unchanged from upstream (tini -> dsh web).

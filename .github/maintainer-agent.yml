@@ -28,7 +28,7 @@ egress:
   - downloads.cursor.com
 
 links:
-  - https://hub.docker.com/r/louisremi/deepseek-harness-devkit
+  - https://hub.docker.com/r/louisremi/deepseek-harness-augmented
   - https://github.com/runzhliu/deepseek-harness-docker
 
 protected_paths:
