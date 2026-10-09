@@ -7,7 +7,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "2.1.284",
+    "@anthropic-ai/claude-code": "2.1.292",
     "@google/gemini-cli": "0.63.0",
     "@openai/codex": "0.159.0",
     "concurrently": "10.0.5",
