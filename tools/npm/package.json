@@ -9,7 +9,7 @@
   "dependencies": {
     "@anthropic-ai/claude-code": "2.1.292",
     "@google/gemini-cli": "0.63.0",
-    "@openai/codex": "0.160.1",
+    "@openai/codex": "0.161.0",
     "concurrently": "10.0.5",
     "dotenv-cli": "11.0.0",
     "esbuild": "0.28.2",
