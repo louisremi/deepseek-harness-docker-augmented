@@ -92,7 +92,10 @@ Other merged bumps do not publish by themselves. To ship them sooner, cut a rele
     gh release create "$(scripts/next-tag.sh)" --generate-notes
 
 CI then builds that commit and publishes the image under the release's tag and `latest`. The tag must be
-the next free `<upstream-tag>-devkit.<N>` and the commit must be on `main`; otherwise the run fails before pushing anything.
+the next free `<upstream-tag>-devkit.<N>` and the commit must be on `main`; otherwise the run fails before pushing anything
+(and the release you created stays, without an image: delete it and retry). A release on an older commit of `main`
+is published under its own tag but does not move `latest`. Push, weekly and manual runs only ever publish the tip of
+`main`, so re-running an old run cannot republish old code.
 
 New issues ──► same agent, triage mode (sandboxed, offline, no token): investigates and posts one first answer
                (maintainer issues automatically; others after a maintainer adds the `triage` label)

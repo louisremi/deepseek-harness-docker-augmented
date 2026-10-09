@@ -103,7 +103,8 @@ No Docker? Push to a branch with an open PR and let CI build it:
 `<upstream-tag>-devkit.<N>`, e.g. `0.2.1-alpha.1-r1-bwrap.1-devkit.3` (the upstream tag includes its `-bwrap.M` suffix). N counts publishes on
 the same upstream tag (tool bumps, Debian security rebuilds). `latest` always
 points at the newest publish. `scripts/next-tag.sh` computes it; never
-publish by hand over an existing tag. Publishing is release-driven: only an
+publish by hand over an existing tag (CI re-checks that the tag is free right
+before pushing it). Publishing is release-driven: only an
 upstream-pin change on `main`, the weekly run (if the manifest changed) and a
 maintainer-created GitHub Release publish. A tool/library bump merging does not
 publish by itself, and agents never create releases.

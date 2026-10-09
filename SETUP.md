@@ -66,6 +66,10 @@ above and creates releases with the workflow's own `GITHUB_TOKEN`
 (`contents: write` on the `publish` job only). A release created by hand
 (`gh release create "$(scripts/next-tag.sh)" --generate-notes`) is built from
 its commit, which must be on `main`, and must be tagged `<upstream-tag>-devkit.<N>`.
+If a guard rejects it, the release stays on GitHub with no image: delete it
+(`gh release delete <tag> --cleanup-tag`) and create it again. Releases whose
+name is not `<upstream-tag>-devkit.<N>` or whose commit is not on `main` are
+ignored when CI looks for the previous release.
 Optionally add a tag ruleset (Settings → Rules) restricting who may create
 `*-devkit.*` tags, since a release triggers a publish.
 

@@ -17,9 +17,13 @@ name: CI
 #   - weekly schedule / manual dispatch on main -> same, but only if
 #     /opt/devtools/MANIFEST.txt differs from :latest (e.g. Debian security
 #     updates; tool bumps merged meanwhile ship too), so no empty tags appear;
+#     a dispatch with `force_publish` skips that comparison;
 #   - a GitHub Release created by hand (tag = the next <upstream>-devkit.<N>,
 #     commit on main) -> publish that tag. Releases created by this workflow's
 #     GITHUB_TOKEN do not trigger the release event, so there is no loop.
+# Push, schedule and dispatch runs publish only the tip of main, so re-running
+# an old run cannot republish an old commit; a hand-made release on an older
+# commit of main gets its own tag but does not move `latest`.
 # Any other push to main (tool, npm, pip, action bumps) builds and smoke-tests
 # only; cut a release when you want those to ship.
 #
@@ -76,6 +80,7 @@ jobs:
     outputs:
       image_changed: ${{ steps.changes.outputs.image_changed }}
       publish: ${{ steps.plan.outputs.publish }}
+      latest: ${{ steps.plan.outputs.latest }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -122,8 +127,9 @@ jobs:
               echo "::error::Release ${RELEASE_TAG} points at a commit that is not on main; only reviewed code may be published."
               exit 1
             fi
-            scripts/release-plan.sh tag-free "${RELEASE_TAG}"
+            scripts/release-plan.sh tag-free "${RELEASE_TAG}" "${IMAGE#docker.io/}"
           fi
+          # Fails (instead of guessing) when the GitHub API is unavailable.
           scripts/release-plan.sh decide "${EVENT}" "${REF}" "${BEFORE}" | tee -a "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v7
@@ -259,7 +265,10 @@ jobs:
         id: decide
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" != "schedule" || "${{ inputs.force_publish }}" == "true" ]]; then
+          # Push (upstream pin changed) and release (maintainer decision) are
+          # already decided by `validate`. Schedule and dispatch publish only if
+          # the image inventory changed, unless a dispatch forces it.
+          if [[ "${{ github.event_name }}" == "push" || "${{ github.event_name }}" == "release" || "${{ inputs.force_publish }}" == "true" ]]; then
             echo "publish=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           changed=false
@@ -280,33 +289,46 @@ jobs:
         id: tags
         if: steps.decide.outputs.publish == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          LATEST: ${{ needs.validate.outputs.latest }}
         run: |
           set -euo pipefail
+          repo="${IMAGE#docker.io/}"
           if [[ "${{ github.event_name }}" == "release" ]]; then
-            tag="${RELEASE_TAG}" # validated in `validate` (format, on main, unused)
+            tag="${RELEASE_TAG}" # format and branch validated in `validate`
           else
-            tag="$(scripts/next-tag.sh louisremi/deepseek-harness-devkit)"
+            tag="$(scripts/next-tag.sh "${repo}")"
+            # The release is created last under the same name: make sure it is free now.
+            scripts/release-plan.sh release-free "${tag}"
           fi
+          # `validate` may have run up to ~90 min ago (builds); `imagetools create`
+          # overwrites silently, so check again inside the publish concurrency group.
+          scripts/release-plan.sh tag-free "${tag}" "${repo}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "Publishing ${IMAGE}:${tag} and :latest"
-          docker buildx imagetools create \
-            --tag "${IMAGE}:${tag}" \
-            --tag "${IMAGE}:latest" \
+          tags=(--tag "${IMAGE}:${tag}")
+          [[ "${LATEST}" != true ]] || tags+=(--tag "${IMAGE}:latest")
+          echo "Publishing ${IMAGE}:${tag}$([[ "${LATEST}" != true ]] || echo ' and :latest')"
+          docker buildx imagetools create "${tags[@]}" \
             "${IMAGE}@$(cat artifacts/digest-amd64)" \
             "${IMAGE}@$(cat artifacts/digest-arm64)"
           docker buildx imagetools inspect "${IMAGE}:${tag}"
           {
             echo "### Published \`${IMAGE}:${tag}\`"
             echo
-            echo "Also tagged \`latest\`. Platforms: linux/amd64, linux/arm64."
+            if [[ "${LATEST}" == true ]]; then
+              echo "Also tagged \`latest\`. Platforms: linux/amd64, linux/arm64."
+            else
+              echo "Not tagged \`latest\` (release of an older commit of main). Platforms: linux/amd64, linux/arm64."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Automatic publishes (upstream bump, weekly, dispatch) get a release
-      # with the same tag as the image. Created last: a failure here leaves an
-      # image without a release, never a release without an image. A release
-      # made by hand already exists, and one made with GITHUB_TOKEN never
-      # triggers this workflow again.
+      # with the same tag as the image. Created last, after the tag was checked
+      # to be free (`release-free`), so a failure here leaves an image without
+      # a release. (A release made by hand does the reverse when a guard fails:
+      # the release exists, the image does not; delete the release and retry.)
+      # One made with GITHUB_TOKEN never triggers this workflow again.
       - name: Create the GitHub Release (generated notes)
         if: steps.decide.outputs.publish == 'true' && github.event_name != 'release'
         env:
