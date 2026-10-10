@@ -8,8 +8,9 @@
 //    page, keep using the store that was seeded with the profile.
 // 2. For every plugin, check its DSH peer ranges against the runtime exactly
 //    as dsh does (semver, prereleases included). An incompatible plugin that
-//    starts disabled gets an exact-version exemption (`dsh plugin allow-version
-//    ... --accept-risk`); an incompatible enabled plugin fails the build.
+//    starts disabled gets an exact-version exemption; an incompatible enabled
+//    plugin fails the build. (Granted below with `dsh plugin allow-version
+//    ... --accept-risk`, dsh's own name for the exemption.)
 // 3. Install everything with dsh's own `dsh plugin --profile web add`.
 // 4. Deselect the plugins that start disabled (they stay installed).
 // 5. Assert the result.
@@ -18,8 +19,13 @@ import { readFileSync, writeFileSync, existsSync, appendFileSync } from 'node:fs
 import { join } from 'node:path'
 import { createRequire } from 'node:module'
 
-const require = createRequire('/usr/local/lib/node_modules/npm/')
-const semver = require('semver')
+// `semver` comes from dsh's own tree (dsh-app-boot declares it), not from the
+// private copy npm bundles under /usr/local/lib/node_modules/npm, which npm is
+// free to move or drop. DSH_MODULES is the Dockerfile ARG that already points
+// into dsh's modules; two levels up is the `@deepseek-ai/dsh` package itself.
+const dshModules = process.env.DSH_MODULES
+  ?? '/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai'
+const semver = createRequire(join(dshModules, '..', '..', 'package.json'))('semver')
 
 const listPath = process.argv[2]
 if (!listPath) throw new Error('usage: install-dsh-plugins.mjs <plugins package.json>')
