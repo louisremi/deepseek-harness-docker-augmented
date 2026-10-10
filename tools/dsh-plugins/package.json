@@ -1,0 +1,14 @@
+{
+  "name": "deepseek-harness-augmented-dsh-plugins",
+  "private": true,
+  "description": "dsh plugins pre-installed in the image's seed `web` profile (scripts/install-dsh-plugins.mjs). Exact pins, bumped by Renovate. `dshPlugins.enabled` lists the ones selected by default; the others are installed but switched off (enable them from the Plugins page). Not installed with npm: the dependencies block only exists so Renovate can track the pins.",
+  "license": "MIT",
+  "dependencies": {
+    "@louisremi/dsh-always-on": "0.3.0",
+    "dsh-plugin-subscriptions": "0.9.9",
+    "dshmarket": "1.66.14"
+  },
+  "dshPlugins": {
+    "enabled": ["@louisremi/dsh-always-on"]
+  }
+}

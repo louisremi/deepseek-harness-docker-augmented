@@ -25,11 +25,17 @@
   platformAutomerge: true,
   automergeStrategy: 'squash',
 
-  // Supply-chain buffer for third-party tools; upstream DSH has none (below).
+  // Supply-chain buffer for third-party tools and plugins; upstream DSH has none (below).
   minimumReleaseAge: '2 days',
   internalChecksFilter: 'strict',
 
   enabledManagers: ['custom.regex', 'npm', 'pip_requirements', 'github-actions'],
+
+  // tools/dsh-plugins/package.json is a pin list read by the Dockerfile, not
+  // an npm project: no lockfile, and every dependency is a dsh plugin.
+  npm: {
+    managerFilePatterns: ['/(^|/)tools/npm/package\\.json$/', '/(^|/)tools/dsh-plugins/package\\.json$/'],
+  },
 
   customManagers: [
     {
@@ -37,54 +43,51 @@
       // `ARG NAME=<value>[@sha256:<digest>]`. Versioning / tag extraction per
       // datasource is set in packageRules below.
       customType: 'regex',
-      description: 'Dockerfile ARG pins annotated with a renovate comment',
+      description: 'Dockerfile ARG pins annotated with a renovate comment (packageName is optional)',
       managerFilePatterns: ['/(^|/)Dockerfile$/'],
       matchStrings: [
-        '# renovate: datasource=(?<datasource>[a-z.-]+) depName=(?<depName>\\S+)\\s+ARG [A-Z0-9_]+=(?:docker\\.io/[^:\\s]+:)?(?<currentValue>[^@\\s]+)(?:@(?<currentDigest>sha256:[0-9a-f]{64}))?\\s',
+        '# renovate: datasource=(?<datasource>[a-z.-]+) depName=(?<depName>\\S+)(?: packageName=(?<packageName>\\S+))?\\s+ARG [A-Z0-9_]+=(?:docker\\.io/[^:\\s]+:)?(?<currentValue>[^@\\s]+)(?:@(?<currentDigest>sha256:[0-9a-f]{64}))?\\s',
       ],
       versioningTemplate: 'semver-coerced',
     },
   ],
 
-  customDatasources: {
-    // Cursor publishes no release feed; the version is embedded in its
-    // official install script as downloads.cursor.com/lab/<version>/...
-    cursor: {
-      defaultRegistryUrlTemplate: 'https://cursor.com/install',
-      format: 'plain',
-    },
-  },
-
   packageRules: [
     {
-      description: 'Upstream DSH image: follow every revision incl. alpha/rc, only the -bwrap.N variant (bubblewrap bundled), pinned by digest, no delay',
+      description: 'Upstream DSH images: one PR for all three variant pins (same upstream release), every revision incl. alpha/rc, pinned by digest, no delay',
       matchDatasources: ['docker'],
       matchPackageNames: ['runzhliu/deepseek-harness'],
-      versioning: 'regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:-(?<prerelease>(?:alpha|beta|rc)\\.\\d+))?-r(?<build>\\d+)-bwrap\\.(?<revision>\\d+)$',
+      groupName: 'upstream DSH images',
       ignoreUnstable: false,
       respectLatest: false,
       pinDigests: true,
       minimumReleaseAge: null,
       labels: ['renovate', 'upstream'],
-      commitMessageTopic: 'upstream DSH image',
+      commitMessageTopic: 'upstream DSH images',
       // Also catches upstream re-pushing the same tag (digest-only PR).
       prBodyNotes: [
-        'Upstream bump (-bwrap.N variant). CI rebuilds the SameSite=Lax patch and asserts that the base still bundles a non-setuid bwrap and that the sandbox chain prefers it; it fails loudly otherwise. See docs/agent/bump-upstream.md.',
+        'Upstream bump (default, -bwrap.N and -ungoogled.N bases). static-check.sh requires all three to name the same upstream release; if upstream has not published one of the variants yet, this PR stays red until it does. CI re-applies the SameSite=Lax patch, re-checks the base contract and the plugins against the new dsh, and smoke-tests every variant. See docs/agent/bump-upstream.md.',
       ],
+    },
+    {
+      description: 'Upstream default variant: <X.Y.Z[-pre.N]>-r<N> only',
+      matchDepNames: ['upstream-default'],
+      versioning: 'regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:-(?<prerelease>(?:alpha|beta|rc)\\.\\d+))?-r(?<build>\\d+)$',
+    },
+    {
+      description: 'Upstream bubblewrap variant: <...>-r<N>-bwrap.<M> only',
+      matchDepNames: ['upstream-bwrap'],
+      versioning: 'regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:-(?<prerelease>(?:alpha|beta|rc)\\.\\d+))?-r(?<build>\\d+)-bwrap\\.(?<revision>\\d+)$',
+    },
+    {
+      description: 'Upstream ungoogled-chromium variant: <...>-r<N>-ungoogled.<M> only',
+      matchDepNames: ['upstream-ungoogled'],
+      versioning: 'regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:-(?<prerelease>(?:alpha|beta|rc)\\.\\d+))?-r(?<build>\\d+)-ungoogled\\.(?<revision>\\d+)$',
     },
     {
       description: 'GitHub release tags are v-prefixed',
       matchDatasources: ['github-releases'],
       extractVersion: '^v(?<version>\\d.*)$',
-    },
-    {
-      description: 'Cursor agent: parse <YYYY.MM.DD>-<sha> out of the official install script',
-      matchDatasources: ['custom.cursor'],
-      extractVersion: 'downloads\\.cursor\\.com/lab/(?<version>\\d{4}\\.\\d{2}\\.\\d{2}-[0-9a-f]+)/',
-      versioning: 'regex:^(?<major>\\d{4})\\.(?<minor>\\d{2})\\.(?<patch>\\d{2})-[0-9a-f]+$',
-      // The install script carries no release timestamp, so an age gate would
-      // hold every release forever; the version string itself is dated.
-      minimumReleaseAge: null,
     },
     {
       description: 'The engines field documents the base image runtime; never bump it',
@@ -96,7 +99,7 @@
       description: 'Release binaries: refresh per-arch sha256 ARGs in the same commit',
       matchManagers: ['custom.regex'],
       matchFileNames: ['Dockerfile'],
-      matchDatasources: ['github-releases', 'custom.cursor'],
+      matchDatasources: ['github-releases'],
       postUpgradeTasks: {
         commands: ['python3 scripts/refresh-checksums.py --tool {{{depName}}}'],
         fileFilters: ['Dockerfile'],
@@ -111,16 +114,26 @@
       schedule: ['* 0-5 * * 1'],
     },
     {
-      description: 'npm: keep exact pins; AI CLIs move fast, give each its own PR',
+      description: 'npm: keep exact pins',
       matchManagers: ['npm'],
       rangeStrategy: 'pin',
     },
     {
-      description: 'npm dev tooling (non AI CLIs): group weekly',
+      description: 'npm dev tooling: group weekly',
       matchManagers: ['npm'],
-      matchPackageNames: ['!@anthropic-ai/claude-code', '!@google/gemini-cli', '!@openai/codex', '!task-master-ai'],
+      matchFileNames: ['tools/npm/package.json'],
       groupName: 'npm dev tooling',
       schedule: ['* 0-5 * * 1'],
+    },
+    {
+      description: 'dsh plugins baked into the seed profile: one PR each (CI re-checks compatibility and smoke-tests the profile)',
+      matchManagers: ['npm'],
+      matchFileNames: ['tools/dsh-plugins/package.json'],
+      labels: ['renovate', 'dsh-plugin'],
+      commitMessageTopic: 'dsh plugin {{depName}}',
+      prBodyNotes: [
+        'A plugin enabled by default must stay compatible with the base dsh (the build fails otherwise); a disabled one gets an exact-version exemption. See docs/agent/bump-tool.md.',
+      ],
     },
     {
       description: 'GitHub Actions: group, weekly',

@@ -26,8 +26,8 @@ Day-to-day use is in [README.md](README.md); development is in
    opened a PR. [renovate.yml](.github/workflows/renovate.yml) mints a
    one-hour token from them on each run.
 3. **Settings:** enable *Allow auto-merge*. Add branch protection on `main`
-   requiring the status checks `review-gate / gate`, `validate`,
-   `build (amd64)` and `build (arm64)`, **including for administrators** (the
+   requiring the status checks `review-gate / gate`, `validate` and `images`
+   (the aggregate of the six variant × arch builds), **including for administrators** (the
    agent's token is yours; without this it could push to `main` or merge past
    the checks).
 4. **Environments** (Settings → Environments): create **`agent-review`** with
@@ -49,7 +49,7 @@ gh variable set RENOVATE_APP_CLIENT_ID -R $R
 gh variable set RENOVATE_PR_AUTHOR -R $R            # <app-slug>[bot]
 gh secret set RENOVATE_APP_PRIVATE_KEY -R $R < ~/Downloads/<app-slug>.*.private-key.pem
 gh api -X PUT repos/$R/branches/main/protection --input - <<'EOF'
-{"required_status_checks":{"strict":false,"contexts":["review-gate / gate","validate","build (amd64)","build (arm64)"]},
+{"required_status_checks":{"strict":false,"contexts":["review-gate / gate","validate","images"]},
  "enforce_admins":true,"required_pull_request_reviews":null,"restrictions":null}
 EOF
 me="$(gh api user --jq .id)"
@@ -65,11 +65,13 @@ Publishing needs no extra secrets: `ci.yml` pushes with the Docker Hub secrets
 above and creates releases with the workflow's own `GITHUB_TOKEN`
 (`contents: write` on the `publish` job only). A release created by hand
 (`gh release create "$(scripts/next-tag.sh)" --generate-notes`) is built from
-its commit, which must be on `main`, and must be tagged `<upstream-tag>-augmented.<N>`.
+its commit, which must be on `main`, and must be tagged `<X-rN>-augmented.<N>`
+(the default variant's tag; CI publishes the three variant tags for that N).
 If a guard rejects it, the release stays on GitHub with no image: delete it
 (`gh release delete <tag> --cleanup-tag`) and create it again. Releases whose
-name is not `<upstream-tag>-augmented.<N>` or whose commit is not on `main` are
-ignored when CI looks for the previous release.
+name is not `<X-rN>[-bwrap.<B>]-augmented.<N>` (the bwrap form names releases
+made before the variant split) or whose commit is not on `main` are ignored
+when CI looks for the previous release.
 Optionally add a tag ruleset (Settings → Rules) restricting who may create
 `*-augmented.*` tags, since a release triggers a publish. Its pattern must
 follow `TAG_SUFFIX` in [scripts/tag-scheme.sh](scripts/tag-scheme.sh) if the

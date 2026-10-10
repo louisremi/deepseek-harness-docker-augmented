@@ -1,0 +1,53 @@
+#!/bin/sh
+# Entrypoint of louisremi/deepseek-harness-augmented: seed the `web` profile,
+# then hand over to upstream's entrypoint unchanged.
+#
+# The image carries a pre-built `web` profile (dsh plugins + pnpm store) in
+# SEED_DIR. A Harness home without a `web` profile (fresh named volume, empty
+# bind mount, tmpfs) gets a copy. A profile that already exists is never
+# modified: for each baked plugin it lacks, print the command that adds it.
+set -eu
+
+seed=/opt/deepseek-harness-augmented/seed
+plugins=/opt/deepseek-harness-augmented/dsh-plugins.json
+home="${DSH_HOME:-/home/node/.dsh}"
+profile="${home}/profiles/web"
+
+if [ "${DSH_AUGMENTED_SEED:-1}" = 0 ]; then
+  :
+elif [ ! -e "${profile}/package.json" ]; then
+  if [ -e "${profile}" ] && [ -n "$(ls -A "${profile}" 2>/dev/null)" ]; then
+    echo "augmented: ${profile} exists without package.json; not seeding it" >&2
+  elif [ -e "${home}/pnpm-store" ]; then
+    # A store we did not create may be in use by other profiles: copy only the
+    # profile would leave it pointing at our store path, which then exists.
+    echo "augmented: ${home}/pnpm-store already exists; not seeding the web profile (run: dsh plugin --profile web add <plugin>)" >&2
+  elif mkdir -p "${home}/profiles" \
+      && cp -a "${seed}/profiles/web" "${profile}.augmented-seed.$$" \
+      && cp -a "${seed}/pnpm-store" "${home}/pnpm-store" \
+      && mv "${profile}.augmented-seed.$$" "${profile}"; then
+    echo "augmented: seeded ${profile} with the image's dsh plugins" >&2
+  else
+    rm -rf "${profile}.augmented-seed.$$"
+    echo "augmented: could not seed ${profile} (is ${home} writable by $(id -un)?); continuing without the bundled plugins" >&2
+  fi
+else
+  # Existing profile: report, never edit.
+  node -e '
+    const fs = require("node:fs")
+    const [listPath, manifestPath] = process.argv.slice(1)
+    let list, manifest
+    try { list = JSON.parse(fs.readFileSync(listPath, "utf8")); manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) } catch { process.exit(0) }
+    const have = manifest.dependencies || {}
+    const enabled = new Set((list.dshPlugins && list.dshPlugins.enabled) || [])
+    if (have["@louisremi/dsh-docker-adapter"]) {
+      console.error("augmented: @louisremi/dsh-docker-adapter is superseded by @louisremi/dsh-always-on and conflicts with it; run: dsh plugin --profile web remove @louisremi/dsh-docker-adapter")
+    }
+    for (const [name, version] of Object.entries(list.dependencies || {})) {
+      if (have[name]) continue
+      console.error("augmented: this image bundles " + name + "@" + version + " (" + (enabled.has(name) ? "enabled" : "disabled") + " by default) but your existing web profile does not have it; to add it: dsh plugin --profile web add " + name + "@" + version)
+    }
+  ' "${plugins}" "${profile}/package.json" || true
+fi
+
+exec /usr/local/bin/deepseek-harness-entrypoint "$@"

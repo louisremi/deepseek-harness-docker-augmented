@@ -31,62 +31,94 @@ bwrap_contract() {
   local joined
   joined="$(awk '{ sub(/#.*/, "") } /\\$/ { printf "%s ", substr($0, 1, length($0)-1); next } { print }' Dockerfile)"
   grep -qF "grep -Eq 'linux: \\[\"bwrap\"'" Dockerfile \
+    && grep -qF 'if [ "${VARIANT}" = bwrap ]; then' Dockerfile \
     && grep -qF 'command -v bwrap' Dockerfile \
     && grep -qF 'test ! -u "${bwrap}"' Dockerfile \
     && grep -qF 'PATCH GUARD: base image bwrap is setuid' Dockerfile \
     && grep -qF 'test -x "${bwrap}"' Dockerfile \
-    && ! grep -Eq 'apt-get install[^;&|]*bubblewrap' <<<"${joined}"
+    && ! grep -Eq 'apt-get install[^;&|]*bubblewrap' <<<"${joined}" \
+    && ! grep -Eq 'chmod [^;&|]*u\+s' <<<"${joined}"
 }
 lax_patch() {
   grep -qF 's/HttpOnly; SameSite=Strict/HttpOnly; SameSite=Lax/' Dockerfile \
     && grep -qF "grep -q 'HttpOnly; SameSite=Lax'" Dockerfile
 }
-check "bubblewrap contract assertion + sandbox-chain guard present (no local install)" bwrap_contract
+agents_home() {
+  grep -qF "grep -q '\"DSH_AGENTS_HOME\"'" Dockerfile \
+    && grep -qE '^    DSH_AGENTS_HOME=/opt/deepseek-harness-augmented/agents \\$' Dockerfile \
+    && test -s agents/AGENTS.md
+}
+check "bubblewrap contract assertion (bwrap variant) + sandbox-chain guard present, no local install, no setuid" bwrap_contract
 check "SameSite=Lax patch + guard present" lax_patch
+check "model-facing AGENTS.md wired through DSH_AGENTS_HOME (with guard)" agents_home
 
-step "base image pin"
-if grep -Eq '^ARG DSH_BASE_IMAGE=docker\.io/runzhliu/deepseek-harness:[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?-r[0-9]+-bwrap\.[0-9]+@sha256:[0-9a-f]{64}$' Dockerfile; then
-  ok "DSH_BASE_IMAGE pinned by tag and digest"
-else
-  bad "DSH_BASE_IMAGE must be docker.io/runzhliu/deepseek-harness:<X.Y.Z[-pre.N]-rN-bwrap.M>@sha256:<digest>"
-fi
-if grep '^ARG DSH_BASE_IMAGE=' Dockerfile | grep -Eq -- '-(market|ungoogled)\.'; then
-  bad "DSH_BASE_IMAGE must use the bwrap upstream variant, not market/ungoogled"
-else
-  ok "bwrap upstream variant (not market/ungoogled)"
-fi
+step "base image pins"
+base_pins() {
+  local rc=0 v line tag release="" pre='[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?-r[0-9]+'
+  declare -A suffix=([DEFAULT]='' [BWRAP]='-bwrap\.[0-9]+' [UNGOOGLED]='-ungoogled\.[0-9]+')
+  [[ "$(grep -cE '^ARG BASE_[A-Z]+=' Dockerfile)" == 3 ]] || { echo "  expected exactly three ARG BASE_* pins" >&2; rc=1; }
+  for v in DEFAULT BWRAP UNGOOGLED; do
+    line="$(grep -E "^ARG BASE_${v}=" Dockerfile || true)"
+    if ! grep -Eq "^ARG BASE_${v}=docker\.io/runzhliu/deepseek-harness:${pre}${suffix[${v}]}@sha256:[0-9a-f]{64}$" <<<"${line}"; then
+      echo "  BASE_${v} must be docker.io/runzhliu/deepseek-harness:<X.Y.Z[-pre.N]-rN>${suffix[${v}]//\\/}@sha256:<digest>" >&2; rc=1; continue
+    fi
+    grep -B1 -E "^ARG BASE_${v}=" Dockerfile | grep -qE "^# renovate: datasource=docker depName=upstream-${v,,} packageName=runzhliu/deepseek-harness$" \
+      || { echo "  BASE_${v} lacks its renovate annotation" >&2; rc=1; }
+    tag="$(sed -E 's/^ARG BASE_[A-Z]+=[^:]+:([^@]+)@.*/\1/' <<<"${line}")"
+    tag="$(grep -oE "^${pre}" <<<"${tag}")"
+    if [[ -z "${release}" ]]; then release="${tag}"
+    elif [[ "${tag}" != "${release}" ]]; then echo "  BASE_${v} is upstream release ${tag}, BASE_DEFAULT is ${release}: all variants must share one" >&2; rc=1; fi
+  done
+  if grep -E '^ARG BASE_' Dockerfile | grep -Eq -- '-market\.|:latest'; then echo "  never the -market variant or latest" >&2; rc=1; fi
+  return "${rc}"
+}
+check "three upstream bases (default, -bwrap.N, -ungoogled.N) pinned by tag+digest, same upstream release, never market/latest" base_pins
 
 step "tag scheme (scripts/tag-scheme.sh)"
 tag_scheme_consistent() {
-  local IMAGE_REPO TAG_SUFFIX rc=0
+  local IMAGE_REPO TAG_SUFFIX VARIANTS rc=0 v
+  declare -A MOVING_TAGS
   # shellcheck source=scripts/tag-scheme.sh
   . scripts/tag-scheme.sh
   grep -qxF "  IMAGE: docker.io/${IMAGE_REPO}" .github/workflows/ci.yml \
     || { echo "  ci.yml IMAGE is not docker.io/${IMAGE_REPO}" >&2; rc=1; }
+  local joined; joined="$(IFS=,; echo "${VARIANTS[*]}")"
+  grep -qxF "        variant: [${joined//,/, }]" .github/workflows/ci.yml \
+    || { echo "  ci.yml build matrix variants differ from VARIANTS" >&2; rc=1; }
+  for v in "${VARIANTS[@]}"; do
+    [[ -n "${MOVING_TAGS[${v}]:-}" ]] || { echo "  no moving tag for variant ${v}" >&2; rc=1; }
+    grep -qE "^ARG BASE_${v^^}=" Dockerfile || { echo "  no ARG BASE_${v^^} for variant ${v}" >&2; rc=1; }
+  done
+  [[ "${MOVING_TAGS[default]:-}" == latest ]] || { echo "  latest must point at the default variant" >&2; rc=1; }
   # The suffix and image name must only be spelled in tag-scheme.sh.
   if grep -nF -e "-${TAG_SUFFIX}." -e "${IMAGE_REPO}" scripts/next-tag.sh scripts/release-plan.sh >&2; then
     echo "  hardcoded image name or tag suffix above; use IMAGE_REPO / TAG_SUFFIX" >&2; rc=1
   fi
   return "${rc}"
 }
-check "image name and tag suffix defined once, ci.yml agrees" tag_scheme_consistent
+check "image name, tag suffix and variants defined once, ci.yml and Dockerfile agree" tag_scheme_consistent
 
 step "release planning (scripts/release-plan.sh)"
 release_plan_tests() {
-  local t fb rc=0 pin1 pin2 c1 c2 rp="${root}/scripts/release-plan.sh" up=1.2.3-rc.4-r1-bwrap.1
+  local t fb rc=0 c1 c2 rp="${root}/scripts/release-plan.sh" up=1.2.3-rc.4-r1
+  local da db
+  da="$(printf 'a%.0s' {1..64})"; db="$(printf 'b%.0s' {1..64})"
+  pins() {  # pins <digest of the bwrap base>
+    printf 'ARG BASE_DEFAULT=docker.io/runzhliu/deepseek-harness:%s@sha256:%s\n' "${up}" "${da}"
+    printf 'ARG BASE_BWRAP=docker.io/runzhliu/deepseek-harness:%s-bwrap.2@sha256:%s\n' "${up}" "$1"
+    printf 'ARG BASE_UNGOOGLED=docker.io/runzhliu/deepseek-harness:%s-ungoogled.3@sha256:%s\n' "${up}" "${da}"
+  }
   t="$(mktemp -d)"; fb="$(mktemp -d)"
-  pin1='ARG DSH_BASE_IMAGE=docker.io/runzhliu/deepseek-harness:'"${up}"'@sha256:'"$(printf 'a%.0s' {1..64})"
-  pin2='ARG DSH_BASE_IMAGE=docker.io/runzhliu/deepseek-harness:'"${up}"'@sha256:'"$(printf 'b%.0s' {1..64})"
   (
     set -e
     cd "${t}"
     git init -q -b main .
     git config user.email t@t; git config user.name t
-    printf '%s\nRUN true\n' "${pin1}" > Dockerfile; git add Dockerfile; git commit -qm one
-    printf '%s\nRUN echo tools\n' "${pin1}" > Dockerfile; git commit -qam tools
+    { pins "${da}"; echo 'RUN true'; } > Dockerfile; git add Dockerfile; git commit -qm one
+    { pins "${da}"; echo 'RUN echo tools'; } > Dockerfile; git commit -qam tools
   ) >/dev/null 2>&1 || rc=1
   c1="$(git -C "${t}" rev-parse HEAD~1 2>/dev/null)" || rc=1
-  printf '%s\nRUN echo tools\n' "${pin2}" > "${t}/Dockerfile"
+  { pins "${db}"; echo 'RUN echo tools'; } > "${t}/Dockerfile"   # only one variant's digest moves
   git -C "${t}" commit -qam upstream >/dev/null 2>&1 || rc=1
   c2="$(git -C "${t}" rev-parse HEAD 2>/dev/null)" || rc=1
   git -C "${t}" branch -q side "${c1}" >/dev/null 2>&1 || rc=1
@@ -101,9 +133,12 @@ release_plan_tests() {
   r_fails() { local r="$1"; shift; if with_releases "${r}" "${rp}" "$@" >/dev/null 2>&1; then echo "  should have failed (releases: ${r:-none}): release-plan.sh $*" >&2; rc=1; fi; }
   r_ok() { local r="$1"; shift; with_releases "${r}" "${rp}" "$@" >/dev/null 2>&1 || { echo "  should have passed (releases: ${r:-none}): release-plan.sh $*" >&2; rc=1; }; }
   d_is() { local want="$1"; shift; r_is "$1" "${want}" "${@:2}"; }   # d_is WANT RELEASES args...
-  local t1="${up}-augmented.1" t2="${up}-augmented.2"
+  local t1="${up}-augmented.1" t2="${up}-augmented.2" old="${up}-bwrap.2-augmented.1"
 
   rp_is "${up}" upstream-tag
+  rp_is "${up}-bwrap.2" upstream-tag "" bwrap
+  rp_is "${up}-ungoogled.3" upstream-tag "" ungoogled
+  rp_fails upstream-tag "" market
   rp_ok validate-tag "${up}-augmented.1"
   rp_ok validate-tag "${up}-augmented.12"
   rp_fails validate-tag "${up}-augmented.0"
@@ -111,12 +146,17 @@ release_plan_tests() {
   rp_fails validate-tag "${up}-augmented.x"
   rp_fails validate-tag "${up}-augmented."
   rp_fails validate-tag "${up}"
+  rp_fails validate-tag "${up}-bwrap.2-augmented.1"                         # releases are named after the default variant
   rp_fails validate-tag "${up}-devkit.1"                                     # retired schemes are not publishable
   rp_fails validate-tag "${up}-dev.1"
-  rp_fails validate-tag 9.9.9-r1-bwrap.1-augmented.1
+  rp_fails validate-tag 9.9.9-r1-augmented.1
   rp_fails validate-tag bogus
   rp_fails validate-tag v1.0.0
+  rp_is "$(printf 'default %s-augmented.7 latest\nbwrap %s-bwrap.2-augmented.7 bwrap\nungoogled %s-ungoogled.3-augmented.7 ungoogled' "${up}" "${up}" "${up}")" \
+    variant-tags "${up}-augmented.7"
+  rp_fails variant-tags "${up}-bwrap.2-augmented.7"
 
+  git -C "${t}" tag "${old}" "${c1}"
   git -C "${t}" tag "${t1}" "${c1}"
   git -C "${t}" tag "${t2}" "${c2}"
   git -C "${t}" tag bogus "${c2}"
@@ -129,12 +169,14 @@ release_plan_tests() {
   r_is "${t2}"$'\n'"${t1}" "${t2}" last-release
   r_is "bogus"$'\n'"${t2}" "${t2}" last-release                           # a stray, non-augmented release is ignored
   r_is "${up}-augmented.8"$'\n'"${t1}" "${t1}" last-release                   # tagged commit not on main is ignored
+  r_is "${old}" "${old}" last-release                                       # pre-split (bwrap-named) releases are still a baseline
   r_is "" "" last-release                                                   # no release at all
-  r_is "${up}-devkit.3" "" last-release                                     # retired-scheme tags are never a baseline (none were released)
+  r_is "${up}-devkit.3" "" last-release                                     # retired-scheme tags are never a baseline
 
-  # upstream-changed: compare with the last release, else with BEFORE, else never publish
-  r_ok    "${t1}" upstream-changed "${c2}"                                  # pin differs from last release
-  r_fails "${t2}" upstream-changed "${c1}"                                  # same pin as last release
+  # upstream-changed: compare all three pins with the last release, else with BEFORE, else never publish
+  r_ok    "${t1}" upstream-changed "${c2}"                                  # one variant's pin differs from last release
+  r_ok    "${old}" upstream-changed "${c2}"
+  r_fails "${t2}" upstream-changed "${c1}"                                  # same pins as last release
   r_ok    "" upstream-changed "${c1}"                                       # no release: compare with BEFORE
   r_fails "" upstream-changed "${c2}"
   r_fails "" upstream-changed 0000000000000000000000000000000000000000      # nothing to compare: never publish
@@ -156,9 +198,21 @@ release_plan_tests() {
   d_is "$(printf 'publish=false\nlatest=false')" "${t1}" decide push refs/heads/main "${c1}"
   d_is "$(printf 'publish=false\nlatest=false')" ""      decide schedule refs/heads/main ""
   d_is "$(printf 'publish=false\nlatest=false')" ""      decide workflow_dispatch refs/heads/main ""
-  # a release on an older commit of main is published, but does not move latest
+  # a release on an older commit of main is published, but does not move the moving tags
   d_is "$(printf 'publish=true\nlatest=false')"  ""      decide release refs/tags/x ""
   git -C "${t}" checkout -q main
+
+  # tag-free checks every variant's tag (fake Docker Hub: only the bwrap tag exists)
+  printf '#!/bin/sh\nfor a; do case "$a" in *-bwrap.2-augmented.5) echo 200; exit 0;; esac; done\necho 404\n' > "${fb}/curl"; chmod +x "${fb}/curl"
+  if PATH="${fb}:${PATH}" rp_env "${rp}" tag-free "${up}-augmented.5" >/dev/null 2>&1; then
+    echo "  tag-free must fail when any variant tag exists" >&2; rc=1
+  fi
+  PATH="${fb}:${PATH}" rp_env "${rp}" tag-free "${up}-augmented.6" >/dev/null 2>&1 || { echo "  tag-free should pass when no variant tag exists" >&2; rc=1; }
+  printf '#!/bin/sh\necho 503\n' > "${fb}/curl"
+  if PATH="${fb}:${PATH}" rp_env "${rp}" tag-free "${up}-augmented.6" >/dev/null 2>&1; then
+    echo "  tag-free must fail when Docker Hub fails" >&2; rc=1
+  fi
+  rm -f "${fb}/curl"
 
   # a failing GitHub API is fatal, never a silent "nothing to publish"
   printf '#!/bin/sh\necho "HTTP 502" >&2\nexit 1\n' > "${fb}/gh"; chmod +x "${fb}/gh"
@@ -181,7 +235,40 @@ release_plan_tests() {
   rm -rf "${t}" "${fb}"
   return "${rc}"
 }
-check "tag validation and publish decisions" release_plan_tests
+check "tag validation, variant tags and publish decisions" release_plan_tests
+
+step "dsh plugins (tools/dsh-plugins/package.json)"
+if python3 - <<'PY'
+import json, re, sys
+p = json.load(open("tools/dsh-plugins/package.json"))
+deps = p.get("dependencies", {})
+enabled = p.get("dshPlugins", {}).get("enabled", [])
+errors = []
+if not deps:
+    errors.append("no plugins listed")
+for name, spec in deps.items():
+    if not re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?", spec):
+        errors.append(f"{name}: '{spec}' is not an exact version")
+for name in enabled:
+    if name not in deps:
+        errors.append(f"enabled plugin {name} is not in dependencies")
+if not enabled:
+    errors.append("at least one plugin must be enabled by default")
+if "@louisremi/dsh-docker-adapter" in deps:
+    errors.append("@louisremi/dsh-docker-adapter is superseded by (and conflicts with) @louisremi/dsh-always-on")
+for e in errors:
+    print(e, file=sys.stderr)
+sys.exit(1 if errors else 0)
+PY
+then ok "exact pins, enabled set valid"; else bad "dsh plugins list"; fi
+
+step "model-facing AGENTS.md command list"
+agents_commands() {
+  local block
+  block="$(sed -n '/^<!-- commands:/,/^<!-- \/commands -->/p' agents/AGENTS.md)"
+  [[ -n "${block}" ]] && grep -oE '`[^` ]+`' <<<"${block}" | grep -q .
+}
+check "agents/AGENTS.md has a smoke-testable <!-- commands --> block" agents_commands
 
 step "release binary checksums"
 check "checksum ARGs well-formed" python3 scripts/refresh-checksums.py --check
@@ -203,17 +290,24 @@ for name, spec in pkg["dependencies"].items():
         errors.append(f"{name}: lockfile has {got}, package.json pins {spec}")
 if "pnpm" in pkg["dependencies"]:
     errors.append("pnpm must not be bundled (upstream pins its own for dsh plugin)")
+for ai in ("@anthropic-ai/claude-code", "@google/gemini-cli", "@openai/codex", "task-master-ai", "opencode-ai", "@mariozechner/pi-coding-agent"):
+    if ai in pkg["dependencies"]:
+        errors.append(f"{ai}: AI CLIs are deliberately not bundled")
 allowed = pkg.get("allowScripts", {})
 for key, meta in lock["packages"].items():
     if key and meta.get("hasInstallScript"):
         name = key.split("node_modules/")[-1]
         if name not in allowed:
             errors.append(f"{name}@{meta.get('version')} has install scripts but no allowScripts decision")
+locked = {k.split("node_modules/")[-1] for k in lock["packages"] if k}
+for name in allowed:
+    if name not in locked:
+        errors.append(f"allowScripts entry {name} matches no locked package; remove it")
 for e in errors:
     print(e, file=sys.stderr)
 sys.exit(1 if errors else 0)
 PY
-then ok "lockfile consistent, exact pins, install-script policy complete"; else bad "npm lockfile"; fi
+then ok "lockfile consistent, exact pins, no AI CLIs, install-script policy complete"; else bad "npm lockfile"; fi
 
 step "python requirements"
 if python3 - <<'PY'
@@ -240,11 +334,12 @@ else
   skip "hadolint not installed"
 fi
 if command -v shellcheck >/dev/null 2>&1; then
-  check "shellcheck" shellcheck -x scripts/*.sh
+  check "shellcheck" shellcheck -x scripts/*.sh scripts/augmented-entrypoint
 else
   skip "shellcheck not installed"
 fi
 check "refresh-checksums.py compiles" python3 -m py_compile scripts/refresh-checksums.py
+check "install-dsh-plugins.mjs parses" node --check scripts/install-dsh-plugins.mjs
 
 if (( online )); then
   step "npm registry resolution"

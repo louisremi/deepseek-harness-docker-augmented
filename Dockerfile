@@ -2,69 +2,83 @@
 #
 # louisremi/deepseek-harness-augmented
 #
-# runzhliu/deepseek-harness (bubblewrap variant) + one local patch + HolyClaude
-# "slim" developer tooling + the dsh-docker-adapter plugin in the `web`
-# profile. Every version below is pinned and kept current by Renovate (see
-# renovate.json5); release binaries carry per-architecture sha256 values that
-# scripts/refresh-checksums.py refreshes in the same PR. Read AGENTS.md before
-# editing this file.
+# One Dockerfile, three variants, each built FROM the matching upstream
+# runzhliu/deepseek-harness image (https://github.com/runzhliu/deepseek-harness-docker):
 #
-# ---------------------------------------------------------------------------
-# Bubblewrap -- inherited from upstream's `-bwrap.N` image variant
+#   VARIANT=default    <X-rN>                -> <X-rN>-augmented.<N>               (:latest)
+#   VARIANT=bwrap      <X-rN>-bwrap.<B>      -> <X-rN>-bwrap.<B>-augmented.<N>     (:bwrap)
+#   VARIANT=ungoogled  <X-rN>-ungoogled.<U>  -> <X-rN>-ungoogled.<U>-augmented.<N> (:ungoogled)
 #
-# dsh-sandbox-local's Linux runner chain is ["bwrap", "landlock"]. On nasbrico
-# the Unraid kernel was built without CONFIG_SECURITY_LANDLOCK (the syscall
-# returns ENOSYS, permanently), and the plain upstream image ships no
-# bubblewrap, so every bash tool call failed closed with SANDBOX_UNAVAILABLE
-# and needed a one-off danger-full-access approval, forever. We reported this
-# as runzhliu/deepseek-harness-docker#35; since 0.2.1-alpha.1-r1 upstream
-# publishes a `-bwrap.N` variant that installs bubblewrap itself, so we no
-# longer patch it in. The base MUST stay on that variant (never the plain tag);
-# the step below only asserts the contract and installs nothing.
-#
-# bwrap is not setuid on purpose: the runtime keeps `no-new-privileges`, which
-# neutralises setuid anyway. It works unprivileged via user namespaces, which
-# needs compose security_opt values (seccomp=unconfined, systempaths=unconfined,
-# and apparmor=unconfined on AppArmor hosts); see compose.example.yaml.
-#
-# Patch -- SameSite=Lax
-#
-# Upstream mints the browser-session cookie at /?token= with SameSite=Strict.
-# An installed Android PWA (WebAPK) launches via an intent, and Strict blocks
-# that intent-initiated top-level navigation where Lax does not. Dropping this
-# patch has been tried and failed (2026-09-23); confirmed still needed on
-# 0.1.7-rc.2. The value is a literal inside a non-exported function of
-# compiled output, so neither config nor a NODE_OPTIONS hook can reach it,
-# and the runtime rootfs is read-only -- hence a guarded sed at build time.
-# If upstream ever ships Lax itself the step becomes a no-op; if it rewords
-# the string the build fails loudly instead of shipping an unpatched image.
-# ---------------------------------------------------------------------------
+# Upstream's -market variant is deliberately not derived: dshmarket ships here
+# as a (disabled) profile plugin instead. On top of each base we add only:
+#   1. the SameSite=Lax session-cookie patch (guarded);
+#   2. developer tooling from HolyClaude's "both variants" list, minus its AI
+#      CLIs and minus what upstream already ships;
+#   3. dsh plugins pre-installed in a seed `web` profile (tools/dsh-plugins);
+#   4. a model-facing AGENTS.md describing all of the above (agents/AGENTS.md).
+# Everything is pinned and kept current by Renovate (renovate.json5). Read the
+# repository's AGENTS.md before editing this file.
 
-# renovate: datasource=docker depName=runzhliu/deepseek-harness
-ARG DSH_BASE_IMAGE=docker.io/runzhliu/deepseek-harness:0.2.1-alpha.2-r1-bwrap.1@sha256:bf56164db911c03b37f143a314bf2c1ae7d364f0f54ee1be282b2d77f9d5cacb
+# The three bases always come from the same upstream release (<X-rN>);
+# scripts/static-check.sh enforces it and Renovate bumps them as one group.
+# renovate: datasource=docker depName=upstream-default packageName=runzhliu/deepseek-harness
+ARG BASE_DEFAULT=docker.io/runzhliu/deepseek-harness:0.2.1-alpha.2-r1@sha256:5dbae4567efd6ad900ddf8ee900647d1b8a27d14568c3967a0ccf4bbec35d520
+# renovate: datasource=docker depName=upstream-bwrap packageName=runzhliu/deepseek-harness
+ARG BASE_BWRAP=docker.io/runzhliu/deepseek-harness:0.2.1-alpha.2-r1-bwrap.1@sha256:bf56164db911c03b37f143a314bf2c1ae7d364f0f54ee1be282b2d77f9d5cacb
+# renovate: datasource=docker depName=upstream-ungoogled packageName=runzhliu/deepseek-harness
+ARG BASE_UNGOOGLED=docker.io/runzhliu/deepseek-harness:0.2.1-alpha.2-r1-ungoogled.1@sha256:bcaecc8a793e0cca9cede983604f9d4bf3abca404493d8f386dd0cb07d45e196
+ARG VARIANT=default
 
-FROM ${DSH_BASE_IMAGE}
+FROM ${BASE_DEFAULT} AS base-default
+FROM ${BASE_BWRAP} AS base-bwrap
+FROM ${BASE_UNGOOGLED} AS base-ungoogled
 
-ARG DSH_BASE_IMAGE
+# BuildKit only builds the stage VARIANT selects.
+# hadolint ignore=DL3006
+FROM base-${VARIANT}
+
+ARG VARIANT
+ARG BASE_DEFAULT
+ARG BASE_BWRAP
+ARG BASE_UNGOOGLED
 ARG TARGETARCH
+ARG DSH_MODULES=/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai
 
 USER root
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-ENV DSH_MODULES=/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai
-
-# ---------- Contract: the base provides bubblewrap -------------------------
+# ---------- Contract: what we rely on from the base -------------------------
+# Every variant: dsh's sandbox still prefers bwrap on Linux, and dsh still
+# reads a shared user-global AGENTS.md from $DSH_AGENTS_HOME (used below).
+# bwrap variant: a non-setuid bwrap the runtime user can execute (the runtime
+# keeps no-new-privileges; compose.bwrap.yaml has the security_opt values).
+# Every variant: CHROMIUM_FLAVOR matches (catches a swapped base pin).
 RUN set -eux; \
+    case "${VARIANT}" in default|bwrap|ungoogled) ;; \
+      *) echo "unsupported VARIANT=${VARIANT} (default|bwrap|ungoogled)" >&2; exit 1 ;; esac; \
     grep -Eq 'linux: \["bwrap"' "${DSH_MODULES}/dsh-sandbox-local/lib/index.js" \
       || { echo "PATCH GUARD: dsh-sandbox-local no longer prefers bwrap on linux; re-read the sandbox plugin before shipping" >&2; exit 1; }; \
-    bwrap="$(command -v bwrap)" \
-      || { echo "PATCH GUARD: base image has no bwrap on PATH; DSH_BASE_IMAGE must be the upstream -bwrap.N variant" >&2; exit 1; }; \
-    test ! -u "${bwrap}" \
-      || { echo "PATCH GUARD: base image bwrap is setuid; our invariant requires a non-setuid bwrap (the runtime keeps no-new-privileges)" >&2; exit 1; }; \
-    setpriv --reuid="$(id -u node)" --regid="$(id -g node)" --clear-groups test -x "${bwrap}" \
-      || { echo "PATCH GUARD: base image bwrap (${bwrap}) is not executable by the runtime user node" >&2; exit 1; }
+    grep -q '"DSH_AGENTS_HOME"' "${DSH_MODULES}/dsh-home-paths/lib/index.js" \
+      || { echo "PATCH GUARD: dsh no longer reads DSH_AGENTS_HOME; agents/AGENTS.md would not reach the model" >&2; exit 1; }; \
+    if [ "${VARIANT}" = bwrap ]; then \
+      bwrap="$(command -v bwrap)" \
+        || { echo "PATCH GUARD: base image has no bwrap on PATH; BASE_BWRAP must be the upstream -bwrap.N variant" >&2; exit 1; }; \
+      test ! -u "${bwrap}" \
+        || { echo "PATCH GUARD: base image bwrap is setuid; our invariant requires a non-setuid bwrap (the runtime keeps no-new-privileges)" >&2; exit 1; }; \
+      setpriv --reuid="$(id -u node)" --regid="$(id -g node)" --clear-groups test -x "${bwrap}" \
+        || { echo "PATCH GUARD: base image bwrap (${bwrap}) is not executable by the runtime user node" >&2; exit 1; }; \
+    fi; \
+    want_flavor=debian; [ "${VARIANT}" != ungoogled ] || want_flavor=ungoogled; \
+    test "${CHROMIUM_FLAVOR:-}" = "${want_flavor}" \
+      || { echo "PATCH GUARD: VARIANT=${VARIANT} expects CHROMIUM_FLAVOR=${want_flavor}, base has '${CHROMIUM_FLAVOR:-}'" >&2; exit 1; }
 
 # ---------- Patch: SameSite=Lax ------------------------------------------
+# Upstream mints the browser-session cookie at /?token= with SameSite=Strict.
+# An installed Android PWA (WebAPK) launches via an intent, and Strict blocks
+# that intent-initiated top-level navigation. The value is a literal in
+# compiled output that neither config nor a hook can reach, and the runtime
+# rootfs is read-only, hence a guarded build-time sed: a no-op if upstream
+# ships Lax, a loud failure if it rewords the string.
 RUN set -eux; \
     f="${DSH_MODULES}/dsh-client-connection/lib/index.js"; \
     if grep -q 'HttpOnly; SameSite=Strict' "$f"; then \
@@ -74,11 +88,11 @@ RUN set -eux; \
       || { echo "PATCH GUARD: session cookie string not found in dsh-client-connection; upstream changed it" >&2; exit 1; }; \
     ! grep -q 'SameSite=Strict' "$f"
 
-# ---------- Debian developer packages (HolyClaude slim parity) -------------
-# Upstream (node:24-trixie + buildpack-deps) already provides git, curl, wget,
-# jq, ripgrep, unzip, zip, less, rsync, openssh-client, procps, python3,
-# gcc/make, chromium, xvfb and fonts. Debian packages track the pinned trixie
-# snapshot of the base image and are refreshed by the weekly rebuild.
+# ---------- Debian developer packages ---------------------------------------
+# Upstream (node:24-trixie = buildpack-deps) already provides git, curl, wget,
+# jq, ripgrep, unzip, zip, xz, less, rsync, openssh-client, procps, file,
+# python3, gcc/make, ImageMagick, Chromium and Xvfb. Debian packages follow the
+# base image's trixie snapshot and are refreshed by the weekly rebuild.
 # hadolint ignore=DL3008
 RUN set -eux; \
     apt-get update; \
@@ -89,7 +103,6 @@ RUN set -eux; \
       fd-find \
       fonts-noto-color-emoji \
       htop \
-      imagemagick \
       iproute2 \
       lsof \
       nano \
@@ -123,16 +136,12 @@ ARG FZF_SHA256_ARM64=5d673b849f494f0d64ec471d8640b153ca8849e3846a31da17abdcfce8d
 ARG ATUIN_VERSION=18.23.0
 ARG ATUIN_SHA256_AMD64=d1b40dd6e7cd3d823867ffe22b39a025bc420f7875926ae9ca974155378da14d
 ARG ATUIN_SHA256_ARM64=faf91adc71e6b661b21ed4f486babbd7af9d17363d4276da4a0251f83c72498d
-# renovate: datasource=custom.cursor depName=cursor-agent
-ARG CURSOR_VERSION=2026.10.01-e373342
-ARG CURSOR_SHA256_AMD64=a79726c6e644520e993970be4c45775a6889802b67abe461a677a53219ae28e8
-ARG CURSOR_SHA256_ARM64=785c5f6bf2a60eb1121e27ed8c14f5ee07ed1b5b6692324f2d9a997238245eb5
 
 # hadolint ignore=DL3008
 RUN set -eux; \
     case "${TARGETARCH}" in \
-      amd64) arch_uc=AMD64; atuin_target=x86_64-unknown-linux-musl; cursor_arch=x64 ;; \
-      arm64) arch_uc=ARM64; atuin_target=aarch64-unknown-linux-musl; cursor_arch=arm64 ;; \
+      amd64) arch_uc=AMD64; atuin_target=x86_64-unknown-linux-musl ;; \
+      arm64) arch_uc=ARM64; atuin_target=aarch64-unknown-linux-musl ;; \
       *) echo "unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
     sha() { eval "printf '%s' \"\${$1_SHA256_${arch_uc}}\""; }; \
@@ -156,38 +165,31 @@ RUN set -eux; \
     mkdir "$tmp/atuin"; tar -xzf "$tmp/atuin.tgz" -C "$tmp/atuin"; \
     install -m 0755 "$tmp/atuin/atuin-${atuin_target}/atuin" /usr/local/bin/atuin; \
     \
-    fetch "https://downloads.cursor.com/lab/${CURSOR_VERSION}/linux/${cursor_arch}/agent-cli-package.tar.gz" "$tmp/cursor.tgz"; \
-    echo "$(sha CURSOR)  $tmp/cursor.tgz" | sha256sum --check --strict -; \
-    cursor_dir="/opt/devtools/cursor/${CURSOR_VERSION}"; \
-    mkdir -p "$cursor_dir"; \
-    tar --strip-components=1 -xzf "$tmp/cursor.tgz" -C "$cursor_dir"; \
-    test -x "$cursor_dir/cursor-agent"; \
-    for n in cursor-agent cursor agent; do ln -sfn "$cursor_dir/cursor-agent" "/usr/local/bin/$n"; done; \
-    \
     rm -rf "$tmp"; \
     test "$(dpkg-query -W -f='${Version}' gh)" = "${GH_VERSION}"; \
     yq --version | grep -F "${YQ_VERSION}"; \
     test "$(fzf --version | awk '{print $1}')" = "${FZF_VERSION}"; \
-    atuin --version | grep -F "${ATUIN_VERSION}"; \
-    HOME=/tmp cursor-agent --version | grep -F "${CURSOR_VERSION}"
+    atuin --version | grep -F "${ATUIN_VERSION}"
 
-# ---------- npm developer CLIs + AI CLIs -----------------------------------
-# Installed as a locked project under /opt/devtools/npm instead of `npm i -g`
-# so Renovate can manage exact versions and the lockfile. Install scripts are
-# governed by the allowScripts policy in tools/npm/package.json. pnpm is NOT
-# here on purpose: upstream pins its own pnpm for `dsh plugin`.
+# ---------- npm developer CLIs ----------------------------------------------
+# A locked project under /opt/devtools/npm instead of `npm i -g`, so Renovate
+# manages exact versions and the lockfile. Install scripts are governed by the
+# allowScripts policy in tools/npm/package.json. No AI CLIs, and no pnpm
+# (upstream pins its own for `dsh plugin`).
 COPY tools/npm/package.json tools/npm/package-lock.json /opt/devtools/npm/
 WORKDIR /opt/devtools/npm
 RUN set -eux; \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --omit=dev --no-audit --no-fund \
       --cache /tmp/npm-cache --strict-allow-scripts; \
     rm -rf /tmp/npm-cache; \
-    for b in claude gemini codex task-master playwright tsc tsx vite esbuild eslint prettier serve nodemon concurrently dotenv; do \
+    for b in playwright tsc tsx vite esbuild eslint prettier serve nodemon concurrently dotenv; do \
       test -x "node_modules/.bin/$b" || { echo "missing npm bin: $b" >&2; exit 1; }; \
     done
 WORKDIR /
 
-# ---------- Python libraries (venv, HolyClaude slim parity) ----------------
+# ---------- Python libraries (venv) -----------------------------------------
+# On PATH after upstream's: `python` and `pip` are the venv, `python3` stays
+# upstream's bare interpreter (agents/AGENTS.md tells the model).
 COPY tools/python/requirements.txt /opt/devtools/python/requirements.txt
 RUN set -eux; \
     python3 -m venv /opt/devtools/venv; \
@@ -195,65 +197,77 @@ RUN set -eux; \
       --only-binary=:all: -r /opt/devtools/python/requirements.txt; \
     /opt/devtools/venv/bin/pip check
 
-# ---------- dsh plugin: docker adapter --------------------------------------
-# This image exists to run dsh somewhere else and drive it from a browser, so
-# "Show file location" points at a file manager nobody is sitting in front of.
-# @louisremi/dsh-docker-adapter replaces those buttons with "Download file"
-# buttons backed by an authenticated GET /api/download.file, which is what the
-# remote / container setting actually needs.
-#
-# It is installed with dsh's own plugin machinery (`dsh plugin --profile web
-# add`), as the `node` user, so the profile layout, the pnpm environment and
-# the file ownership are exactly what the same command produces at runtime.
-# The package has no dependencies and no install scripts, so the pinned version
-# below is the whole payload.
-#
-# It lands in the Harness home ($DSH_HOME, default $HOME/.dsh = /home/node/.dsh)
-# under profiles/web. A *fresh* named volume mounted there (compose.example.yaml,
-# scripts/smoke.sh) is seeded by Docker from the image content, so new installs
-# get the plugin with no runtime network. A volume that already exists keeps the
-# profile it already has, so it keeps the plugin version it was seeded with
-# even when a later image bumps the ARG below; add or upgrade it there with:
-#   docker compose exec deepseek-harness dsh plugin --profile web add @louisremi/dsh-docker-adapter@latest
-# renovate: datasource=npm depName=@louisremi/dsh-docker-adapter
-ARG DSH_DOCKER_ADAPTER_VERSION=0.2.1
+# ---------- dsh plugins: seed `web` profile -----------------------------------
+# tools/dsh-plugins/package.json lists the plugins (exact pins, Renovate-managed)
+# and which start enabled. install-dsh-plugins.mjs installs them with dsh's own
+# `dsh plugin --profile web add`, as node, so the profile is exactly what that
+# command produces at runtime; then deselects the disabled ones and pins the
+# pnpm store inside the Harness home. The result is moved out of $DSH_HOME into
+# a seed, so the image's $DSH_HOME stays empty like upstream's, and
+# augmented-entrypoint copies it into any Harness home without a `web` profile
+# (fresh named volume *or* bind mount). Existing profiles are never modified.
+ARG SEED_DIR=/opt/deepseek-harness-augmented/seed
+COPY tools/dsh-plugins/package.json /opt/deepseek-harness-augmented/dsh-plugins.json
+COPY scripts/install-dsh-plugins.mjs /usr/local/lib/deepseek-harness-augmented/install-dsh-plugins.mjs
+RUN install -d -o node -g node "${SEED_DIR}"
 USER node
 RUN set -eux; \
-    dsh plugin --profile web add "@louisremi/dsh-docker-adapter@${DSH_DOCKER_ADAPTER_VERSION}"; \
-    home="${DSH_HOME:-${HOME}/.dsh}"; \
-    profile="${home}/profiles/web"; \
-    grep -qF "\"@louisremi/dsh-docker-adapter\": \"${DSH_DOCKER_ADAPTER_VERSION}\"" "${profile}/package.json" \
-      || { echo "PLUGIN GUARD: ${profile}/package.json does not pin @louisremi/dsh-docker-adapter@${DSH_DOCKER_ADAPTER_VERSION}" >&2; exit 1; }; \
-    node -e 'const m = require(process.argv[1]); const b = (m.dsh && m.dsh.profile && m.dsh.profile.bundles) || []; if (!b.includes("@louisremi/dsh-docker-adapter")) { console.error("PLUGIN GUARD: @louisremi/dsh-docker-adapter is not a selected bundle of " + process.argv[1] + ": " + JSON.stringify(b)); process.exit(1); }' "${profile}/package.json"; \
-    test -f "${profile}/node_modules/@louisremi/dsh-docker-adapter/cordis.patch.yml"
+    test -z "$(ls -A "${DSH_HOME}")"; \
+    node /usr/local/lib/deepseek-harness-augmented/install-dsh-plugins.mjs \
+      /opt/deepseek-harness-augmented/dsh-plugins.json; \
+    mv "${DSH_HOME}/profiles" "${DSH_HOME}/pnpm-store" "${SEED_DIR}/"; \
+    rm -rf "${DSH_HOME}/npm-cache" "${DSH_HOME}/logs"; \
+    test -z "$(ls -A "${DSH_HOME}")" \
+      || { ls -la "${DSH_HOME}" >&2; echo "PLUGIN GUARD: unexpected leftovers in ${DSH_HOME}" >&2; exit 1; }
 USER root
+
+# ---------- Entrypoint wrapper ----------------------------------------------
+# Seeds the profile (above), then execs upstream's entrypoint unchanged.
+# Setting ENTRYPOINT resets CMD, so CMD restates upstream's exactly
+# (scripts/smoke.sh compares it with the base image's).
+COPY scripts/augmented-entrypoint /usr/local/bin/augmented-entrypoint
+
+# ---------- Model-facing instructions ---------------------------------------
+# dsh loads $DSH_HOME/AGENTS.md (the user's own) and then $DSH_AGENTS_HOME/AGENTS.md
+# as user-global instructions for every session. A read-only directory in the
+# image keeps the file in step with the image (HolyClaude's first-boot copy of
+# CLAUDE.md goes stale). Override DSH_AGENTS_HOME to use another directory.
+COPY agents/ /opt/deepseek-harness-augmented/agents/
 
 # Upstream binaries (dsh, pnpm, node, python3, chromium) keep precedence:
 # devtools are appended to PATH, never prepended.
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/devtools/npm/node_modules/.bin:/opt/devtools/venv/bin \
+    DSH_AGENTS_HOME=/opt/deepseek-harness-augmented/agents \
     PLAYWRIGHT_BROWSERS_PATH=0 \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # ---------- Manifest (drives "publish only when something changed") --------
 COPY scripts/write-manifest.sh /usr/local/lib/deepseek-harness-augmented/write-manifest.sh
 RUN set -eux; \
-    chmod 0755 /usr/local/lib/deepseek-harness-augmented/write-manifest.sh; \
-    DSH_BASE_IMAGE="${DSH_BASE_IMAGE}" /usr/local/lib/deepseek-harness-augmented/write-manifest.sh > /opt/devtools/MANIFEST.txt; \
+    chmod 0755 /usr/local/bin/augmented-entrypoint /usr/local/lib/deepseek-harness-augmented/write-manifest.sh; \
+    sh -n /usr/local/bin/augmented-entrypoint; \
+    case "${VARIANT}" in \
+      default) base="${BASE_DEFAULT}" ;; bwrap) base="${BASE_BWRAP}" ;; ungoogled) base="${BASE_UNGOOGLED}" ;; \
+    esac; \
+    BASE_IMAGE="${base}" VARIANT="${VARIANT}" SEED_DIR="${SEED_DIR}" \
+      /usr/local/lib/deepseek-harness-augmented/write-manifest.sh > /opt/devtools/MANIFEST.txt; \
     test -s /opt/devtools/MANIFEST.txt
 
 USER node
 WORKDIR /workspace
 
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/augmented-entrypoint"]
+CMD ["web", "--patch", "/opt/deepseek-harness/web.cordis.patch.yml", "--no-open"]
+
 # Metadata last so a new revision only changes image config.
 ARG IMAGE_VERSION=dev
 ARG IMAGE_REVISION=unknown
-LABEL org.opencontainers.image.title="DeepSeek Harness (dev tooling + SameSite=Lax)" \
-      org.opencontainers.image.description="runzhliu/deepseek-harness (bubblewrap variant) with a SameSite=Lax session cookie and HolyClaude-slim developer tooling" \
+LABEL org.opencontainers.image.title="DeepSeek Harness, augmented (${VARIANT})" \
+      org.opencontainers.image.description="runzhliu/deepseek-harness (${VARIANT} variant) with a SameSite=Lax session cookie, developer tooling, pre-installed dsh plugins and a model-facing AGENTS.md" \
       org.opencontainers.image.source="https://github.com/louisremi/deepseek-harness-docker-augmented" \
       org.opencontainers.image.url="https://github.com/louisremi/deepseek-harness-docker-augmented" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${IMAGE_VERSION}" \
       org.opencontainers.image.revision="${IMAGE_REVISION}" \
-      org.opencontainers.image.base.name="${DSH_BASE_IMAGE}" \
+      io.github.louisremi.deepseek-harness-augmented.variant="${VARIANT}" \
       io.github.louisremi.deepseek-harness-augmented.patches="samesite-lax"
-# ENTRYPOINT / CMD are inherited unchanged from upstream (tini -> dsh web).
