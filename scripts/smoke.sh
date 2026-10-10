@@ -118,7 +118,7 @@ pass "SameSite=Lax present in dsh-client-connection"
 gh_v="$(arg GH_VERSION)"; yq_v="$(arg YQ_VERSION)"; fzf_v="$(arg FZF_VERSION)"; atuin_v="$(arg ATUIN_VERSION)"
 run "
   export HOME=/tmp
-  gh --version | head -1 | grep -F ' ${gh_v} '
+  gh --version | sed -n 1p | grep -F ' ${gh_v} '
   yq --version | grep -F '${yq_v}'
   test \"\$(fzf --version | awk '{print \$1}')\" = '${fzf_v}'
   atuin --version | grep -F '${atuin_v}'
@@ -212,13 +212,17 @@ wait_ready() {  # wait_ready <name> <port>; sets token
     status="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:$2/" || true)"
     token="$(docker logs "$1" 2>&1 | sed -n 's#^dsh web: http://127\.0\.0\.1:[0-9][0-9]*/?token=\([^ ]*\).*#\1#p' | tail -n1)"
     [[ "${status}" == 401 && -n "${token}" ]] && return 0
-    docker container inspect --format '{{.State.Running}}' "$1" 2>/dev/null | grep -qx true || { docker logs "$1" >&2 || true; fail "container $1 exited"; }
+    [[ "$(docker container inspect --format '{{.State.Running}}' "$1" 2>/dev/null || true)" == true ]] || { docker logs "$1" >&2 || true; fail "container $1 exited"; }
     sleep 1
   done
   docker logs "$1" >&2
   fail "dsh web ($1) did not become ready within 90s"
 }
 in_container() { docker exec "$1" sh -ec "$2"; }
+# Read logs into a string first: `docker logs | grep -q` under pipefail fails
+# with SIGPIPE whenever grep matches before docker logs finishes writing.
+logs() { docker logs "$@" 2>&1 || true; }
+logged() { local c="$1"; shift; grep "$@" <<<"$(logs "${c}")"; }
 
 volume="dsh-augmented-smoke-home-${suffix}"; volumes+=("${volume}")
 docker volume create "${volume}" >/dev/null
@@ -235,7 +239,7 @@ code="$(curl --silent --output /dev/null --write-out '%{http_code}' --cookie "${
 [[ "${code}" == 200 ]] || fail "authenticated GET / returned ${code}"
 pass "dsh web: authenticated GET / returns 200"
 
-docker logs "${main}" 2>&1 | grep -q 'augmented: seeded' || fail "entrypoint did not seed the fresh volume"
+logged "${main}" -q 'augmented: seeded' || fail "entrypoint did not seed the fresh volume"
 # Runtime proof that dsh-always-on loaded: its route answers 400 (missing
 # path) once authenticated; without the plugin dsh answers 404.
 code="$(curl --silent --output /dev/null --write-out '%{http_code}' --cookie "${cookie_jar}" "http://127.0.0.1:${port}/api/download.file")"
@@ -260,7 +264,7 @@ in_container "${main}" 'cd "$DSH_HOME/profiles/web" && dsh plugin --profile web 
   || fail "dsh plugin install --offline fails on the seeded profile"
 pass "dsh plugin works against the seeded pnpm store"
 
-if docker logs "${main}" 2>&1 | grep -Eqi 'SANDBOX_UNAVAILABLE|failed to load plugin|plugin tree failed|incompatible'; then
+if logged "${main}" -Eqi 'SANDBOX_UNAVAILABLE|failed to load plugin|plugin tree failed|incompatible'; then
   docker logs "${main}" >&2
   fail "dsh logged sandbox, plugin load or compatibility errors"
 fi
@@ -278,9 +282,10 @@ docker run --rm --volume "${volume}:/home/node/.dsh" --entrypoint node "${image}
 docker start "${main}" >/dev/null
 port="$(docker port "${main}" 3080/tcp | awk -F: 'NR == 1 { print $NF }')"
 wait_ready "${main}" "${port}"
-if docker logs --since 2m "${main}" 2>&1 | grep -Eqi 'failed to load plugin|plugin tree failed|incompatible|error'; then
+recent="$(logs --since 2m "${main}")"
+if grep -Eqi 'failed to load plugin|plugin tree failed|incompatible|error' <<<"${recent}"; then
   warn "with all plugins enabled, dsh logged errors (disabled-by-default plugins may be incompatible with dsh ${actual_dsh}):"
-  docker logs --since 2m "${main}" 2>&1 | grep -Ei 'failed|incompatible|error' | head -20 >&2
+  grep -Ei 'failed|incompatible|error' <<<"${recent}" | head -n 20 >&2 || true
 fi
 pass "dsh web still boots with every bundled plugin enabled"
 
@@ -288,7 +293,7 @@ pass "dsh web still boots with every bundled plugin enabled"
 empty="dsh-augmented-smoke-empty-${suffix}"
 port="$(start "${empty}" --tmpfs /home/node/.dsh:rw,nosuid,nodev,size=256m,uid=1000,gid=1000)"
 wait_ready "${empty}" "${port}"
-docker logs "${empty}" 2>&1 | grep -q 'augmented: seeded' || fail "entrypoint did not seed an empty (non-volume) Harness home"
+logged "${empty}" -q 'augmented: seeded' || fail "entrypoint did not seed an empty (non-volume) Harness home"
 pass "empty bind-mount-like Harness home gets seeded"
 
 oldvol="dsh-augmented-smoke-old-${suffix}"; volumes+=("${oldvol}")
@@ -301,8 +306,8 @@ docker run --rm --volume "${oldvol}:/home/node/.dsh" --entrypoint sh "${image}" 
 old="dsh-augmented-smoke-oldprofile-${suffix}"
 port="$(start "${old}" --volume "${oldvol}:/home/node/.dsh")"
 wait_ready "${old}" "${port}"
-docker logs "${old}" 2>&1 | grep -q 'augmented: this image bundles @louisremi/dsh-always-on' || fail "no hint for an existing profile without the plugins"
-docker logs "${old}" 2>&1 | grep -q 'augmented: seeded' && fail "entrypoint overwrote an existing profile"
+logged "${old}" -q 'augmented: this image bundles @louisremi/dsh-always-on' || fail "no hint for an existing profile without the plugins"
+! logged "${old}" -q 'augmented: seeded' || fail "entrypoint overwrote an existing profile"
 in_container "${old}" '! grep -q dsh-always-on "$DSH_HOME/profiles/web/package.json" && ! test -e "$DSH_HOME/pnpm-store"' || fail "existing profile was modified"
 pass "existing profile left untouched, missing plugins reported"
 
