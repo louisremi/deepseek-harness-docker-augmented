@@ -47,6 +47,7 @@ unpatched image.
 | [@louisremi/dsh-always-on](https://github.com/louisremi/dsh-always-on) | **on** | The Harness runs remotely, so "show file location" and "Open in app" have no desktop to reach. This plugin replaces them with **Download file**, **Show files** (sidebar explorer) and an in-browser **Edit** button. |
 | [dshmarket](https://github.com/dsh-market/dsh-market) | off | Community plugin market. Seeded with `allowRestart: false`, because the container owns the lifecycle: restart the container instead. |
 | [dsh-plugin-subscriptions](https://github.com/V1ki/dsh-plugin-subscriptions) | off | Use ChatGPT (Codex), Claude, Grok, Copilot and Antigravity subscriptions as model providers. |
+| [@xbzbing/dsh-git-panel](https://github.com/xbzbing/dsh-git-panel) | off | IDE-style **Git** panel: branch and history graph, commit / amend / stage / discard, stash, tags and syntax-highlighted diffs, plus a branch marker in the input bar. It reads **and writes** the workspace repository, and its "AI suggest" button sends the diff to your configured model provider. |
 
 Turn the "off" plugins on from the sidebar's **Plugins** page. They are
 already installed, so this needs no network. A plugin that ships off may
@@ -55,6 +56,11 @@ dsh-plugin-subscriptions). The build then records an exact-version exemption
 so that it stays installable. **Enabling it is at your own risk** until its
 author widens the range. A plugin that ships on must be compatible, or the
 build fails.
+
+dsh-git-panel is the one bundled plugin with a **Web client half**: its bundle
+manifest is fixed when `dsh web` starts, so if the Git tab does not appear
+after you enable it, restart the container (`docker compose restart`) and
+refresh the page. Its peers match the bundled dsh, so no exemption is needed.
 
 Seeding happens at start-up: a Harness home (`/home/node/.dsh`, named volume
 or bind mount) **without** a `web` profile gets a copy of the image's profile
