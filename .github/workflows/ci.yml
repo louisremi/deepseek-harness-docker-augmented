@@ -66,7 +66,7 @@ jobs:
   # https://github.com/louisremi/maintainer-agent#watching-a-repository
   review-gate:
     if: github.event_name == 'pull_request'
-    uses: louisremi/maintainer-agent/.github/workflows/review-gate.yml@232fecaa8ebc196c28dbc637651fb2f24ff665c2 # v0.1.1
+    uses: louisremi/maintainer-agent/.github/workflows/review-gate.yml@d22aea1cc84427e852ded3140430a4aa6f377a18 # v0.3.0
     with:
       bot_branches: "renovate/*"
       bot_authors: "29139614+renovate[bot]@users.noreply.github.com"
