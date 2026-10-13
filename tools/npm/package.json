@@ -7,7 +7,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "concurrently": "10.0.5",
+    "concurrently": "10.0.6",
     "dotenv-cli": "11.0.0",
     "esbuild": "0.28.2",
     "eslint": "10.12.0",
