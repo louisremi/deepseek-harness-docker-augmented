@@ -8,7 +8,7 @@ Usage:
                                   postUpgradeTasks needs); falls back to all
                                   tools when git is unavailable
   refresh-checksums.py --tool N   recompute one tool; N is the Renovate depName
-                                  (cli/cli, cursor-agent, ...) or ARG prefix (GH)
+                                  (cli/cli, mikefarah/yq, ...) or ARG prefix (GH)
   refresh-checksums.py --all      recompute every tool
   refresh-checksums.py --check    offline structural check: every tool has a
                                   version and two well-formed sha256 ARGs
@@ -16,8 +16,8 @@ Usage:
                                   (no file changes)
 
 Where upstream publishes checksums, the downloaded asset is cross-checked
-against them and any mismatch aborts. Cursor publishes none, so its hashes are
-trust-on-first-download; the Docker build re-verifies every hash either way.
+against them and any mismatch aborts (every current tool publishes them); the
+Docker build re-verifies every hash either way.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parent.parent
 DOCKERFILE = ROOT / "Dockerfile"
 ARCHES = ("amd64", "arm64")
-UA = {"User-Agent": "deepseek-harness-dev-refresh-checksums"}
+UA = {"User-Agent": "deepseek-harness-augmented-refresh-checksums"}
 
 
 def fetch(url: str) -> bytes:
@@ -100,7 +100,6 @@ def _yq_published(v: str, arch: str, url: str) -> str | None:
 
 
 ATUIN_TARGET = {"amd64": "x86_64-unknown-linux-musl", "arm64": "aarch64-unknown-linux-musl"}
-CURSOR_ARCH = {"amd64": "x64", "arm64": "arm64"}
 
 TOOLS = [
     Tool(
@@ -126,12 +125,6 @@ TOOLS = [
         "atuinsh/atuin",
         lambda v, a: f"https://github.com/atuinsh/atuin/releases/download/v{v}/atuin-{ATUIN_TARGET[a]}.tar.gz",
         _atuin_published,
-    ),
-    Tool(
-        "CURSOR",
-        "cursor-agent",
-        lambda v, a: f"https://downloads.cursor.com/lab/{v}/linux/{CURSOR_ARCH[a]}/agent-cli-package.tar.gz",
-        None,
     ),
 ]
 

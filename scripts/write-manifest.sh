@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 # Print a deterministic inventory of everything installed in the image.
 # Baked into the image as /opt/devtools/MANIFEST.txt; CI diffs it against the
-# published :latest to decide whether a scheduled rebuild is worth a new tag.
-# Must not contain timestamps, build IDs or anything else that changes when
-# the contents do not.
+# published moving tag of the same variant to decide whether a scheduled
+# rebuild is worth a new tag. Must not contain timestamps, build IDs or
+# anything else that changes when the contents do not.
+#
+#   BASE_IMAGE=<ref> VARIANT=<default|bwrap|ungoogled> SEED_DIR=<dir> write-manifest.sh
 set -euo pipefail
 
 export HOME=/tmp
+seed="${SEED_DIR:?SEED_DIR must be set}"
 
 section() { printf '\n## %s\n' "$1"; }
 
 printf '# deepseek-harness-augmented manifest\n'
-printf 'base=%s\n' "${DSH_BASE_IMAGE:?DSH_BASE_IMAGE must be set}"
+printf 'variant=%s\n' "${VARIANT:?VARIANT must be set}"
+printf 'base=%s\n' "${BASE_IMAGE:?BASE_IMAGE must be set}"
 printf 'arch=%s\n' "$(dpkg --print-architecture)"
 
 section "upstream"
@@ -19,34 +23,35 @@ printf 'dsh=%s\n' "$(dsh --version)"
 printf 'node=%s\n' "$(node --version)"
 printf 'pnpm=%s\n' "$(pnpm --version)"
 printf 'python3=%s\n' "$(python3 --version | awk '{print $2}')"
-printf 'bwrap=%s\n' "$(bwrap --version | awk '{print $2}')"
+printf 'chromium-flavor=%s\n' "${CHROMIUM_FLAVOR:-}"
+if command -v bwrap >/dev/null; then printf 'bwrap=%s\n' "$(bwrap --version | awk '{print $2}')"; fi
 
 section "patches"
 grep -o 'HttpOnly; SameSite=[A-Za-z]*' \
   /usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js
 
-section "dsh plugins (web profile)"
-# The plugin is baked into the Harness home at build time (see the Dockerfile's
-# "dsh plugin" step). $DSH_HOME wins over $HOME there; write-manifest.sh runs
-# with HOME=/tmp, so the fallback names the image's own home explicitly.
-dsh_home="${DSH_HOME:-/home/node/.dsh}"
+section "model-facing instructions"
+printf 'DSH_AGENTS_HOME=%s\n' "${DSH_AGENTS_HOME:-}"
+(cd /opt/deepseek-harness-augmented/agents && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum)
+
+section "dsh plugins (seed web profile)"
 node -e '
-  const fs = require("node:fs");
-  const dep = "@louisremi/dsh-docker-adapter";
-  let v = "absent";
-  try {
-    const pkg = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-    v = (pkg.dependencies && pkg.dependencies[dep]) || "absent";
-  } catch { /* profile not baked in */ }
-  console.log("dsh-docker-adapter=" + v);
-' "${dsh_home}/profiles/web/package.json"
+  const fs = require("node:fs")
+  const dir = process.argv[1] + "/profiles/web"
+  const pkg = JSON.parse(fs.readFileSync(dir + "/package.json", "utf8"))
+  const bundles = new Set(pkg.dsh.profile.bundles)
+  for (const [name, version] of Object.entries(pkg.dependencies).sort())
+    console.log(`${name}=${version} ${bundles.has(name) ? "enabled" : "disabled"}`)
+  let compat = {}
+  try { compat = JSON.parse(fs.readFileSync(dir + "/compatibility.json", "utf8")) } catch {}
+  for (const [key, versions] of Object.entries(compat).sort()) console.log(`exemption ${key} dsh=${versions.join(",")}`)
+' "${seed}"
 
 section "release binaries"
 printf 'gh=%s\n' "$(dpkg-query -W -f='${Version}' gh)"
 printf 'yq=%s\n' "$(yq --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 printf 'fzf=%s\n' "$(fzf --version | awk '{print $1}')"
 printf 'atuin=%s\n' "$(atuin --version | awk '{print $2}')"
-printf 'cursor-agent=%s\n' "$(readlink -f /usr/local/bin/cursor-agent | awk -F/ '{print $(NF-1)}')"
 
 section "npm (/opt/devtools/npm, installed tree)"
 node -e '

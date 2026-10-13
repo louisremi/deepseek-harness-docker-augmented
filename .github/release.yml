@@ -6,6 +6,8 @@ changelog:
   categories:
     - title: Upstream DeepSeek Harness
       labels: [upstream]
+    - title: dsh plugins
+      labels: [dsh-plugin]
     - title: Dependencies
       labels: [renovate]
     - title: Other changes

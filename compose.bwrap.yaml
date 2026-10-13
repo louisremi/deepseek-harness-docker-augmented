@@ -1,0 +1,19 @@
+# Overlay for Docker hosts whose kernel cannot enforce Landlock (e.g. Unraid):
+# the bubblewrap variant, plus what bwrap needs to create its namespaces.
+#
+#   docker compose -f compose.yaml -f compose.bwrap.yaml up -d
+#
+# Established by bisection; capabilities are irrelevant (SYS_ADMIN is neither
+# necessary nor sufficient), so cap_drop ALL, no-new-privileges, the read-only
+# rootfs and the non-root user all stay.
+services:
+  deepseek-harness:
+    image: docker.io/louisremi/deepseek-harness-augmented:${DSH_AUGMENTED_TAG:-bwrap}
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=unconfined      # Docker's default profile refuses bwrap's namespace syscalls
+      - systempaths=unconfined  # Docker masks /proc; bwrap mounts a fresh one in its namespace
+      # AppArmor hosts only (Ubuntu, Debian with AppArmor); a no-op elsewhere.
+      # docker-default forbids the mount calls bwrap makes. On Ubuntu 23.10+ also
+      # set the host sysctl kernel.apparmor_restrict_unprivileged_userns=0.
+      - apparmor=unconfined

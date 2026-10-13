@@ -1,29 +1,32 @@
 name: CI
 
-# validate -> build+smoke (amd64, arm64, native runners) -> publish
+# validate -> build+smoke (3 variants x amd64/arm64, native runners) -> images -> publish
 #
-# PRs (Renovate bumps, agent fixes): build and smoke both architectures, push
-# nothing. Branch protection requires `review-gate / gate`, `validate`,
-# `build (amd64)` and `build (arm64)`; GitHub auto-merges green Renovate PRs,
-# but anything maintainer-agent may have touched waits for a human at
-# `review-gate` (see the job below).
+# Variants (scripts/tag-scheme.sh): default, bwrap, ungoogled, each FROM the
+# matching upstream image. PRs (Renovate bumps, agent fixes): build and smoke
+# all six, push nothing. Branch protection requires `review-gate / gate`,
+# `validate` and `images` (the aggregate of the build matrix); GitHub
+# auto-merges green Renovate PRs, but anything maintainer-agent may have
+# touched waits for a human at `review-gate` (see the job below).
 #
-# Publishing pushes each architecture by digest, then a multi-arch manifest as
-# louisremi/deepseek-harness-augmented:<upstream-tag>-augmented.<N> and :latest. It
+# Publishing pushes each variant/architecture by digest, then per variant a
+# multi-arch manifest under its immutable tag (`release-plan.sh variant-tags`)
+# and its moving tag (latest / bwrap / ungoogled). One GitHub Release, named
+# after the default variant's tag <X-rN>-augmented.<N>, covers all three. It
 # happens only when `validate` decides so (scripts/release-plan.sh):
-#   - push to main that changed the upstream base image pin (tag or digest)
+#   - push to main that changed an upstream base image pin (tag or digest)
 #     since the latest GitHub release -> publish, then create that release
-#     (generated notes) with the same tag as the image;
-#   - weekly schedule / manual dispatch on main -> same, but only if
-#     /opt/devtools/MANIFEST.txt differs from :latest (e.g. Debian security
-#     updates; tool bumps merged meanwhile ship too), so no empty tags appear;
-#     a dispatch with `force_publish` skips that comparison;
-#   - a GitHub Release created by hand (tag = the next <upstream>-augmented.<N>,
-#     commit on main) -> publish that tag. Releases created by this workflow's
+#     (generated notes);
+#   - weekly schedule / manual dispatch on main -> same, but only if some
+#     variant's /opt/devtools/MANIFEST.txt differs from its moving tag (e.g.
+#     Debian security updates; tool bumps merged meanwhile ship too), so no
+#     empty tags appear; a dispatch with `force_publish` skips that comparison;
+#   - a GitHub Release created by hand (tag = the next <X-rN>-augmented.<N>,
+#     commit on main) -> publish that N. Releases created by this workflow's
 #     GITHUB_TOKEN do not trigger the release event, so there is no loop.
 # Push, schedule and dispatch runs publish only the tip of main, so re-running
 # an old run cannot republish an old commit; a hand-made release on an older
-# commit of main gets its own tag but does not move `latest`.
+# commit of main gets its own tags but does not move the moving tags.
 # Any other push to main (tool, npm, pip, action bumps) builds and smoke-tests
 # only; cut a release when you want those to ship.
 #
@@ -103,7 +106,7 @@ jobs:
           fi
           files="$(git diff --name-only "${base}" HEAD)"
           echo "${files}"
-          if grep -Eq '^(Dockerfile|\.dockerignore|tools/|scripts/|\.github/workflows/ci\.yml)' <<<"${files}"; then
+          if grep -Eq '^(Dockerfile|\.dockerignore|agents/|tools/|scripts/|\.github/workflows/ci\.yml)' <<<"${files}"; then
             echo "image_changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "image_changed=false" >> "$GITHUB_OUTPUT"
@@ -152,21 +155,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        variant: [default, bwrap, ungoogled]
+        arch: [amd64, arm64]
         include:
           - arch: amd64
             runner: ubuntu-24.04
           - arch: arm64
             runner: ubuntu-24.04-arm
-    name: build (${{ matrix.arch }})
+    name: build (${{ matrix.variant }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
       ENABLED: ${{ needs.validate.outputs.image_changed == 'true' || needs.validate.outputs.publish == 'true' }}
       PUBLISH: ${{ needs.validate.outputs.publish == 'true' }}
+      LOCAL_TAG: deepseek-harness-augmented:ci-${{ matrix.variant }}
     steps:
       - name: Skip (no image inputs changed)
         if: env.ENABLED != 'true'
-        run: echo "No Dockerfile/tools/scripts change; image build skipped."
+        run: echo "No Dockerfile/agents/tools/scripts change; image build skipped."
 
       - uses: actions/checkout@v7
         if: env.ENABLED == 'true'
@@ -174,9 +180,9 @@ jobs:
       # Ubuntu 24.04 runners restrict unprivileged user namespaces through
       # AppArmor (host sysctl), and Docker's docker-default AppArmor profile
       # forbids bwrap's mounts ("Failed to make / slave"), so smoke.sh also
-      # passes apparmor=unconfined. Production (Unraid) has no AppArmor.
+      # passes apparmor=unconfined for the bwrap variant.
       - name: Allow unprivileged user namespaces (bwrap smoke test)
-        if: env.ENABLED == 'true'
+        if: env.ENABLED == 'true' && matrix.variant == 'bwrap'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - uses: docker/setup-buildx-action@v4
@@ -199,21 +205,23 @@ jobs:
           platforms: linux/${{ matrix.arch }}
           load: true
           pull: true
-          tags: deepseek-harness-augmented:ci
+          tags: ${{ env.LOCAL_TAG }}
           build-args: |
+            VARIANT=${{ matrix.variant }}
             IMAGE_REVISION=${{ github.sha }}
-          cache-from: type=gha,scope=${{ matrix.arch }}
-          cache-to: type=gha,scope=${{ matrix.arch }},mode=max
+          cache-from: type=gha,scope=${{ matrix.variant }}-${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.variant }}-${{ matrix.arch }},mode=max
 
       - name: Smoke test
         if: env.ENABLED == 'true'
-        run: scripts/smoke.sh deepseek-harness-augmented:ci
+        run: scripts/smoke.sh "${LOCAL_TAG}" "${{ matrix.variant }}"
 
       - name: Extract image manifest
         if: env.ENABLED == 'true'
         run: |
           mkdir -p out
-          docker run --rm --entrypoint cat deepseek-harness-augmented:ci /opt/devtools/MANIFEST.txt > "out/manifest-${{ matrix.arch }}.txt"
+          docker run --rm --entrypoint cat "${LOCAL_TAG}" /opt/devtools/MANIFEST.txt \
+            > "out/manifest-${{ matrix.variant }}-${{ matrix.arch }}.txt"
 
       - name: Push by digest
         id: push
@@ -223,28 +231,45 @@ jobs:
           context: .
           platforms: linux/${{ matrix.arch }}
           build-args: |
+            VARIANT=${{ matrix.variant }}
             IMAGE_REVISION=${{ github.sha }}
-          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.variant }}-${{ matrix.arch }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
 
       - name: Record digest
         if: env.PUBLISH == 'true'
-        run: echo "${{ steps.push.outputs.digest }}" > "out/digest-${{ matrix.arch }}"
+        run: echo "${{ steps.push.outputs.digest }}" > "out/digest-${{ matrix.variant }}-${{ matrix.arch }}"
 
       - uses: actions/upload-artifact@v7
         if: env.ENABLED == 'true'
         with:
-          name: build-${{ matrix.arch }}
+          name: build-${{ matrix.variant }}-${{ matrix.arch }}
           path: out/
           retention-days: 7
 
-  publish:
+  # The one required build check: green only if every matrix leg succeeded
+  # (or was skipped as a whole because no image input changed).
+  images:
     needs: [validate, build]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: All variants built and smoke-tested
+        env:
+          VALIDATE: ${{ needs.validate.result }}
+          BUILD: ${{ needs.build.result }}
+        run: |
+          echo "validate=${VALIDATE} build=${BUILD}"
+          [[ "${VALIDATE}" == success && "${BUILD}" == success ]]
+
+  publish:
+    needs: [validate, images]
     if: needs.validate.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
-      contents: write # create the GitHub Release after the image is pushed
+      contents: write # create the GitHub Release after the images are pushed
     concurrency:
       group: publish
       cancel-in-progress: false
@@ -267,23 +292,30 @@ jobs:
           set -euo pipefail
           # Push (upstream pin changed) and release (maintainer decision) are
           # already decided by `validate`. Schedule and dispatch publish only if
-          # the image inventory changed, unless a dispatch forces it.
+          # some variant's image inventory changed, unless a dispatch forces it.
           if [[ "${{ github.event_name }}" == "push" || "${{ github.event_name }}" == "release" || "${{ inputs.force_publish }}" == "true" ]]; then
             echo "publish=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
+          # shellcheck source=scripts/tag-scheme.sh
+          . scripts/tag-scheme.sh
           changed=false
-          for arch in amd64 arm64; do
-            if ! docker run --rm --platform "linux/${arch}" --entrypoint cat "${IMAGE}:latest" \
-                /opt/devtools/MANIFEST.txt > "current-${arch}.txt" 2>/dev/null; then
-              changed=true; continue
-            fi
-            if ! diff -u "current-${arch}.txt" "artifacts/manifest-${arch}.txt" > "diff-${arch}.txt"; then
-              changed=true
-              echo "::group::manifest diff (${arch})"; cat "diff-${arch}.txt"; echo "::endgroup::"
-            fi
+          for variant in "${VARIANTS[@]}"; do
+            moving="${MOVING_TAGS[${variant}]}"
+            for arch in amd64 arm64; do
+              key="${variant}-${arch}"
+              if ! docker run --rm --platform "linux/${arch}" --entrypoint cat "${IMAGE}:${moving}" \
+                  /opt/devtools/MANIFEST.txt > "current-${key}.txt" 2>/dev/null; then
+                echo "No published ${IMAGE}:${moving} (${arch}) to compare with."
+                changed=true; continue
+              fi
+              if ! diff -u "current-${key}.txt" "artifacts/manifest-${key}.txt" > "diff-${key}.txt"; then
+                changed=true
+                echo "::group::manifest diff (${key})"; cat "diff-${key}.txt"; echo "::endgroup::"
+              fi
+            done
           done
           echo "publish=${changed}" >> "$GITHUB_OUTPUT"
-          [[ "${changed}" == true ]] || echo "Image contents unchanged since :latest; skipping publish." >> "$GITHUB_STEP_SUMMARY"
+          [[ "${changed}" == true ]] || echo "Image contents unchanged since the moving tags; skipping publish." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create and push multi-arch tags
         id: tags
@@ -306,28 +338,33 @@ jobs:
           # overwrites silently, so check again inside the publish concurrency group.
           scripts/release-plan.sh tag-free "${tag}" "${repo}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          tags=(--tag "${IMAGE}:${tag}")
-          [[ "${LATEST}" != true ]] || tags+=(--tag "${IMAGE}:latest")
-          echo "Publishing ${IMAGE}:${tag}$([[ "${LATEST}" != true ]] || echo ' and :latest')"
-          docker buildx imagetools create "${tags[@]}" \
-            "${IMAGE}@$(cat artifacts/digest-amd64)" \
-            "${IMAGE}@$(cat artifacts/digest-arm64)"
-          docker buildx imagetools inspect "${IMAGE}:${tag}"
           {
-            echo "### Published \`${IMAGE}:${tag}\`"
+            echo "### Published \`${tag}\`"
             echo
-            if [[ "${LATEST}" == true ]]; then
-              echo "Also tagged \`latest\`. Platforms: linux/amd64, linux/arm64."
-            else
-              echo "Not tagged \`latest\` (release of an older commit of main). Platforms: linux/amd64, linux/arm64."
-            fi
+            echo "| Variant | Image | Moving tag |"
+            echo "| --- | --- | --- |"
           } >> "$GITHUB_STEP_SUMMARY"
+          : > images.md
+          while read -r variant vtag moving; do
+            tags=(--tag "${IMAGE}:${vtag}")
+            [[ "${LATEST}" != true ]] || tags+=(--tag "${IMAGE}:${moving}")
+            echo "Publishing ${IMAGE}:${vtag}$([[ "${LATEST}" != true ]] || echo " and :${moving}")"
+            docker buildx imagetools create "${tags[@]}" \
+              "${IMAGE}@$(cat "artifacts/digest-${variant}-amd64")" \
+              "${IMAGE}@$(cat "artifacts/digest-${variant}-arm64")"
+            docker buildx imagetools inspect "${IMAGE}:${vtag}"
+            mt="$([[ "${LATEST}" == true ]] && echo "\`${moving}\`" || echo "not moved")"
+            echo "| ${variant} | \`${IMAGE}:${vtag}\` | ${mt} |" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **${variant}**: \`${IMAGE}:${vtag}\` (${mt})" >> images.md
+          done < <(scripts/release-plan.sh variant-tags "${tag}")
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "Platforms: linux/amd64, linux/arm64." >> "$GITHUB_STEP_SUMMARY"
 
       # Automatic publishes (upstream bump, weekly, dispatch) get a release
-      # with the same tag as the image. Created last, after the tag was checked
-      # to be free (`release-free`), so a failure here leaves an image without
-      # a release. (A release made by hand does the reverse when a guard fails:
-      # the release exists, the image does not; delete the release and retry.)
+      # named after the default variant's tag. Created last, after the name was
+      # checked to be free (`release-free`), so a failure here leaves images
+      # without a release. (A release made by hand does the reverse when a guard
+      # fails: the release exists, the images do not; delete it and retry.)
       # One made with GITHUB_TOKEN never triggers this workflow again.
       - name: Create the GitHub Release (generated notes)
         if: steps.decide.outputs.publish == 'true' && github.event_name != 'release'
@@ -337,9 +374,20 @@ jobs:
         run: |
           set -euo pipefail
           prev="$(scripts/release-plan.sh last-release)"
-          args=(--target "${GITHUB_SHA}" --title "${TAG}" --generate-notes
-                --notes "Image: \`${IMAGE}:${TAG}\` (also \`latest\`), linux/amd64 and linux/arm64.")
+          { echo "Images (linux/amd64 and linux/arm64):"; echo; cat images.md; } > notes.md
+          args=(--target "${GITHUB_SHA}" --title "${TAG}" --generate-notes --notes-file notes.md)
           # An explicit start tag: GitHub's automatic "previous tag" is unreliable for non-semver tags.
           [[ -z "${prev}" ]] || args+=(--notes-start-tag "${prev}")
           gh release create "${TAG}" "${args[@]}"
           echo "Release \`${TAG}\` created." >> "$GITHUB_STEP_SUMMARY"
+
+      # A hand-made release keeps the notes the maintainer wrote; append the image list.
+      - name: Add the image list to the hand-made release
+        if: steps.decide.outputs.publish == 'true' && github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tags.outputs.tag }}
+        run: |
+          set -euo pipefail
+          { gh release view "${TAG}" --json body --jq .body; echo; echo "Images (linux/amd64 and linux/arm64):"; echo; cat images.md; } > notes.md
+          gh release edit "${TAG}" --notes-file notes.md
