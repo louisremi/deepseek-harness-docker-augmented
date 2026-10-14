@@ -7,7 +7,7 @@
     "@louisremi/dsh-always-on": "0.3.0",
     "@xbzbing/dsh-git-panel": "1.5.4",
     "dsh-plugin-subscriptions": "0.9.9",
-    "dshmarket": "1.66.17"
+    "dshmarket": "1.66.18"
   },
   "dshPlugins": {
     "enabled": ["@louisremi/dsh-always-on"]
