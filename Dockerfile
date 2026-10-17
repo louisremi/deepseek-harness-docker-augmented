@@ -22,11 +22,11 @@
 # The three bases always come from the same upstream release (<X-rN>);
 # scripts/static-check.sh enforces it and Renovate bumps them as one group.
 # renovate: datasource=docker depName=upstream-default packageName=runzhliu/deepseek-harness
-ARG BASE_DEFAULT=docker.io/runzhliu/deepseek-harness:0.2.1-alpha.4-r1@sha256:c25c3930186910263a9ea684ab8ebeeb269abca4a645333f369803899cf75b4b
+ARG BASE_DEFAULT=docker.io/runzhliu/deepseek-harness:0.2.1-alpha.5-r1@sha256:52ad7654e95048f5b72b110a1809f8ad4c1a3baf0b2db3b93a317889f5f42624
 # renovate: datasource=docker depName=upstream-bwrap packageName=runzhliu/deepseek-harness
-ARG BASE_BWRAP=docker.io/runzhliu/deepseek-harness:0.2.1-alpha.4-r1-bwrap.1@sha256:073620237df6756c87212653bb9a9f0341cbfb4ee9b72a546aa234ec0caf6bba
+ARG BASE_BWRAP=docker.io/runzhliu/deepseek-harness:0.2.1-alpha.5-r1-bwrap.1@sha256:1b6ea049014d6604d2cc56d6bddd5d230016ae37ac5926f3033c2c97ff4bf012
 # renovate: datasource=docker depName=upstream-ungoogled packageName=runzhliu/deepseek-harness
-ARG BASE_UNGOOGLED=docker.io/runzhliu/deepseek-harness:0.2.1-alpha.4-r1-ungoogled.1@sha256:5da33dd38b93c49e4fe66a204120dcf0306404aa6b0305f07c64a71a349ab318
+ARG BASE_UNGOOGLED=docker.io/runzhliu/deepseek-harness:0.2.1-alpha.5-r1-ungoogled.1@sha256:57db8781c9d2ac6af293456b4e6e126d6ab42c28c4567c9d9869f4ef529d766f
 ARG VARIANT=default
 
 FROM ${BASE_DEFAULT} AS base-default
