@@ -121,9 +121,9 @@ RUN set -eux; \
 
 # ---------- Release binaries (checksum-pinned, both architectures) ---------
 # renovate: datasource=github-releases depName=cli/cli
-ARG GH_VERSION=2.102.1
-ARG GH_SHA256_AMD64=5b91c75d971509e96f673fa9f46e5d8ea294b6bbfedbc8ff458aedd88775d94c
-ARG GH_SHA256_ARM64=69a7b86119e9e21f8f4fd6a605386d53fd41625100f3676d93ea9b5a5b176cee
+ARG GH_VERSION=2.103.0
+ARG GH_SHA256_AMD64=4a48fa23b9ce9581f3304b822f3e014812f26519b134f89b37db8bc7d74746e1
+ARG GH_SHA256_ARM64=5e218097cf3e02c4855a07fd4f5719b1523fa799f24eeb70d6b795a9a74fffe2
 # renovate: datasource=github-releases depName=mikefarah/yq
 ARG YQ_VERSION=4.54.1
 ARG YQ_SHA256_AMD64=8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f
