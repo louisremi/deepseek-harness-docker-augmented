@@ -78,7 +78,7 @@ jobs:
       pull-requests: write
 
   validate:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     outputs:
       image_changed: ${{ steps.changes.outputs.image_changed }}
@@ -252,7 +252,7 @@ jobs:
   images:
     needs: [validate, build]
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: All variants built and smoke-tested
@@ -266,7 +266,7 @@ jobs:
   publish:
     needs: [validate, images]
     if: needs.validate.outputs.publish == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
       contents: write # create the GitHub Release after the images are pushed
