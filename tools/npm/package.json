@@ -8,9 +8,9 @@
   },
   "dependencies": {
     "concurrently": "10.0.6",
-    "dotenv-cli": "11.0.0",
+    "dotenv-cli": "11.1.0",
     "esbuild": "0.28.2",
-    "eslint": "10.13.0",
+    "eslint": "10.14.0",
     "nodemon": "3.1.14",
     "playwright": "1.64.1",
     "prettier": "3.9.10",
