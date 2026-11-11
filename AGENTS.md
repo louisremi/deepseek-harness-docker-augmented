@@ -40,12 +40,13 @@ short; do not put repository instructions there.
 
 | Path | Purpose |
 | --- | --- |
-| `Dockerfile` | The image (all variants). Base pins and contract assertions, Lax patch, tools, seed profile, entrypoint, `DSH_AGENTS_HOME`, manifest. Every pin carries a `# renovate:` comment. |
+| `Dockerfile` | The image (all variants). Base pins and contract assertions, Lax patch, tools, seed profile, entrypoint, `DSH_AGENTS_HOME`, `BASH_ENV`, manifest. Every pin carries a `# renovate:` comment. |
 | `agents/AGENTS.md` | Model-facing instructions baked at `$DSH_AGENTS_HOME`. Its `<!-- commands -->` table is smoke-tested. |
 | `tools/dsh-plugins/package.json` | dsh plugins of the seed profile (exact pins) and which start enabled (`dshPlugins.enabled`). Not an npm project. |
 | `tools/npm/package.json` + `package-lock.json` | npm CLIs (exact versions) and the `allowScripts` install-script policy. |
 | `tools/python/requirements.txt` | Python libraries (exact `==` pins, wheels only). |
 | `scripts/install-dsh-plugins.mjs` | Build-time: installs the plugins with `dsh plugin --profile web add`, grants exemptions to incompatible *disabled* plugins, deselects disabled ones, pins the pnpm store. |
+| `scripts/augmented-bash-env` | Runtime: baked at `/opt/deepseek-harness-augmented/bash-env.sh` and named by `BASH_ENV`, so every agent `bash -c` gets `TMPDIR=<project>/.tmp` (bwrap wipes `/tmp` between tool calls). Must never fail or print. |
 | `scripts/augmented-entrypoint` | Runtime: seeds a Harness home that has no `web` profile, never edits an existing one, then execs upstream's entrypoint. |
 | `scripts/refresh-checksums.py` | Recomputes per-arch sha256 ARGs for release binaries and cross-checks them against upstream-published checksums. |
 | `scripts/static-check.sh [--online]` | All checks that need no Docker daemon. **Run it before every push.** |
@@ -67,7 +68,12 @@ short; do not put repository instructions there.
 - **Stay close to upstream.** Add only the four things above. Do not change
   upstream's entrypoint behaviour, CMD (restated verbatim because our
   `ENTRYPOINT` resets it; smoke-tested), users, ports or ENV beyond `PATH`
-  (appended), `DSH_AGENTS_HOME` and the Playwright download switches.
+  (appended), `DSH_AGENTS_HOME`, the Playwright download switches and
+  `BASH_ENV`. `BASH_ENV` is a deliberate maintainer-approved exception: under
+  bwrap each tool call gets a fresh `/tmp` and only the project is writable,
+  so `scripts/augmented-bash-env` must run inside the cage to give the agent a
+  persistent `TMPDIR`. Do not add other ENV for this (a static `TMPDIR` is
+  read-only in the cage).
 - **Bases = upstream `default`, `-bwrap.N` and `-ungoogled.N` of one release,
   each pinned by tag and digest.** Never `-market.*`, never `latest`, never
   variants of different upstream releases (static-check enforces it).

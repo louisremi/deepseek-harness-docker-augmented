@@ -234,18 +234,31 @@ COPY scripts/augmented-entrypoint /usr/local/bin/augmented-entrypoint
 # CLAUDE.md goes stale). Override DSH_AGENTS_HOME to use another directory.
 COPY agents/ /opt/deepseek-harness-augmented/agents/
 
+# ---------- Persistent per-project TMPDIR -----------------------------------
+# Under bwrap every tool call gets a fresh, empty /tmp, and only the session
+# workspace is writable inside the cage (/workspace itself is read-only), so a
+# static TMPDIR cannot work. bash sources $BASH_ENV before each `bash -c` (every
+# dsh tool call); the script points TMPDIR at <project>/.tmp. It is a no-op
+# when TMPDIR is already a writable directory; shipped in every variant for
+# uniformity. A user's own BASH_ENV replaces it (README: source it from there).
+COPY scripts/augmented-bash-env /opt/deepseek-harness-augmented/bash-env.sh
+
 # Upstream binaries (dsh, pnpm, node, python3, chromium) keep precedence:
 # devtools are appended to PATH, never prepended.
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/devtools/npm/node_modules/.bin:/opt/devtools/venv/bin \
     DSH_AGENTS_HOME=/opt/deepseek-harness-augmented/agents \
     PLAYWRIGHT_BROWSERS_PATH=0 \
-    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    BASH_ENV=/opt/deepseek-harness-augmented/bash-env.sh
 
 # ---------- Manifest (drives "publish only when something changed") --------
 COPY scripts/write-manifest.sh /usr/local/lib/deepseek-harness-augmented/write-manifest.sh
 RUN set -eux; \
     chmod 0755 /usr/local/bin/augmented-entrypoint /usr/local/lib/deepseek-harness-augmented/write-manifest.sh; \
     sh -n /usr/local/bin/augmented-entrypoint; \
+    chown root:root /opt/deepseek-harness-augmented/bash-env.sh; \
+    chmod 0644 /opt/deepseek-harness-augmented/bash-env.sh; \
+    bash -n /opt/deepseek-harness-augmented/bash-env.sh; \
     case "${VARIANT}" in \
       default) base="${BASE_DEFAULT}" ;; bwrap) base="${BASE_BWRAP}" ;; ungoogled) base="${BASE_UNGOOGLED}" ;; \
     esac; \

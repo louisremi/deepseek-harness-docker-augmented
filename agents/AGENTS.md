@@ -10,7 +10,9 @@ describe what is installed. Project and personal instructions take precedence.
 - Debian trixie, user `node` (no root, no sudo). Capabilities are dropped.
 - **Read-only root filesystem.** Writable: `/workspace` (the mounted project,
   also `$HOME`), `$DSH_HOME` (`/home/node/.dsh`, persistent Harness data) and
-  `/tmp` (small tmpfs, mounted `noexec`: do not run binaries from it).
+  `/tmp` (small, `noexec`, and may be wiped between tool calls).
+- For scratch files use `$TMPDIR`: it is `<project>/.tmp`, persists between
+  tool calls and allows executables. Add `.tmp/` to the project's `.gitignore`.
 - `apt-get`, `sudo`, `npm install -g` and `pip install` into system or
   `/opt` paths all fail. See "Installing more" below.
 - The user reaches you only through the browser. They cannot see this

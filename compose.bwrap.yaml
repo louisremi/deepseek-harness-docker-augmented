@@ -17,3 +17,6 @@ services:
       # docker-default forbids the mount calls bwrap makes. On Ubuntu 23.10+ also
       # set the host sysctl kernel.apparmor_restrict_unprivileged_userns=0.
       - apparmor=unconfined
+    # bwrap gives every tool call a fresh, empty /tmp. The image's BASH_ENV
+    # points TMPDIR at <project>/.tmp instead; do not set TMPDIR here (only the
+    # session's project directory is writable inside the cage).

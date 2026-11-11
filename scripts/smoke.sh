@@ -187,6 +187,58 @@ cmp -s <(docker run --rm --entrypoint cat "${image}" /opt/deepseek-harness-augme
   || fail "baked AGENTS.md differs from agents/AGENTS.md"
 pass "agents/AGENTS.md baked at \$DSH_AGENTS_HOME, read-only"
 
+# --- 5b. per-project TMPDIR via BASH_ENV --------------------------------------
+# dsh runs every tool call as `bash -c` (inside bwrap on the bwrap variant,
+# with a fresh /tmp each time); BASH_ENV must point TMPDIR at <project>/.tmp.
+bash_env=/opt/deepseek-harness-augmented/bash-env.sh
+run "
+  test \"\${BASH_ENV}\" = ${bash_env}
+  test \"\$(stat -c '%U:%G %a' ${bash_env})\" = 'root:root 644'
+  ! test -w ${bash_env}
+" || fail "BASH_ENV is not ${bash_env} (root-owned, 0644, read-only)"
+scratch="dsh-augmented-smoke-tmpdir-${suffix}"
+containers+=("${scratch}")
+docker run --detach --name "${scratch}" "${hardening[@]}" --entrypoint sleep "${image}" infinity >/dev/null
+in_scratch() { docker exec --workdir "$1" "${scratch}" "${@:2}"; }   # as the image's runtime user
+[[ "$(in_scratch / id -un)" == node ]] || fail "docker exec does not run as the runtime user node"
+in_scratch / mkdir -p /workspace/smoke-proj/sub/dir
+proj=/workspace/smoke-proj
+got="$(in_scratch "${proj}" bash -c 'echo "$TMPDIR"')"
+[[ "${got}" == "${proj}/.tmp" ]] || fail "TMPDIR in ${proj} is '${got}', expected ${proj}/.tmp"
+got="$(in_scratch "${proj}/sub/dir" bash -c 'echo "$TMPDIR"')"
+[[ "${got}" == "${proj}/.tmp" ]] || fail "TMPDIR in a subdirectory is '${got}', expected ${proj}/.tmp"
+in_scratch "${proj}" bash -ec 'test -d "$TMPDIR" && test -w "$TMPDIR"; f="$(mktemp)"; [ "${f%/*}" = "$TMPDIR" ]; echo kept > "$TMPDIR/persist"' \
+  || fail "\$TMPDIR is not a writable directory (or mktemp ignores it)"
+[[ "$(in_scratch "${proj}/sub" bash -c 'cat "$TMPDIR/persist"')" == kept ]] || fail "a file written to \$TMPDIR did not survive to the next docker exec"
+got="$(in_scratch "${proj}" env TMPDIR=/tmp bash -c 'echo "$TMPDIR"')"
+[[ "${got}" == /tmp ]] || fail "a pre-set writable TMPDIR was changed to '${got}'"
+got="$(in_scratch /workspace env -u TMPDIR bash -c 'echo "[${TMPDIR-}]"')"
+[[ "${got}" == "[]" ]] || fail "cwd /workspace (no project) set TMPDIR to '${got}'"
+! in_scratch / test -e /workspace/.tmp || fail "/workspace/.tmp was created"
+for wd in "${proj}" "${proj}/sub/dir" /workspace / /tmp; do
+  for env_args in "-u TMPDIR" "TMPDIR=/tmp" "TMPDIR=/nonexistent"; do
+    # shellcheck disable=SC2086  # env_args is deliberately split
+    out="$(in_scratch "${wd}" env ${env_args} bash -euo pipefail -c ':' 2>&1)" || fail "BASH_ENV script fails under set -euo pipefail (cwd ${wd}, ${env_args})"
+    [[ -z "${out}" ]] || fail "BASH_ENV script printed output (cwd ${wd}, ${env_args}): ${out}"
+  done
+done
+pass "BASH_ENV: TMPDIR=<project>/.tmp (also from subdirectories), persists across calls, pre-set TMPDIR kept, silent"
+
+if [[ "${variant}" == bwrap ]]; then
+  # The cage dsh-sandbox-local builds in workspace-write mode: read-only /,
+  # fresh /tmp, only the session workspace bound writable.
+  cage() {
+    docker exec --workdir / "${scratch}" env -u TMPDIR bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent \
+      --tmpfs /tmp --bind "${proj}" "${proj}" --chdir "$1" -- bash -c "$2"
+  }
+  got="$(cage "${proj}/sub" 'if touch /workspace/escape 2>/dev/null; then exit 9; fi; echo "$TMPDIR"; echo caged > "$TMPDIR/caged"; touch /tmp/gone')"
+  [[ "${got}" == "${proj}/.tmp" ]] || fail "inside a bwrap cage TMPDIR is '${got}', expected ${proj}/.tmp"
+  [[ "$(cage "${proj}" 'cat "$TMPDIR/caged"; test ! -e /tmp/gone && echo fresh-tmp')" == $'caged\nfresh-tmp' ]] \
+    || fail "a file written to \$TMPDIR in one bwrap cage is not visible in the next"
+  pass "bwrap cage: TMPDIR=<project>/.tmp is writable and survives the next cage (its /tmp does not)"
+fi
+docker container rm --force "${scratch}" >/dev/null
+
 # --- 6. seed profile ----------------------------------------------------------
 run 'test -z "$(ls -A "${DSH_HOME}")"' || fail "the image's own \$DSH_HOME is not empty (the profile must live in the seed)"
 seed_manifest="$(docker run --rm --entrypoint cat "${image}" /opt/deepseek-harness-augmented/seed/profiles/web/package.json)"

@@ -50,7 +50,15 @@ agents_home() {
 }
 check "bubblewrap contract assertion (bwrap variant) + sandbox-chain guard present, no local install, no setuid" bwrap_contract
 check "SameSite=Lax patch + guard present" lax_patch
+bash_env() {
+  grep -qF 'COPY scripts/augmented-bash-env /opt/deepseek-harness-augmented/bash-env.sh' Dockerfile \
+    && grep -qE '^    BASH_ENV=/opt/deepseek-harness-augmented/bash-env.sh$' Dockerfile \
+    && grep -qF 'bash -n /opt/deepseek-harness-augmented/bash-env.sh' Dockerfile \
+    && ! grep -Eq '^[^#]*TMPDIR' compose.yaml compose.bwrap.yaml
+}
 check "model-facing AGENTS.md wired through DSH_AGENTS_HOME (with guard)" agents_home
+check "BASH_ENV script baked and wired, syntax-checked; compose sets no TMPDIR" bash_env
+check "augmented-bash-env parses (bash -n)" bash -n scripts/augmented-bash-env
 
 step "base image pins"
 base_pins() {
@@ -334,7 +342,7 @@ else
   skip "hadolint not installed"
 fi
 if command -v shellcheck >/dev/null 2>&1; then
-  check "shellcheck" shellcheck -x scripts/*.sh scripts/augmented-entrypoint
+  check "shellcheck" shellcheck -x scripts/*.sh scripts/augmented-entrypoint scripts/augmented-bash-env
 else
   skip "shellcheck not installed"
 fi
