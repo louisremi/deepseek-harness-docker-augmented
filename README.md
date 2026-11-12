@@ -119,7 +119,7 @@ a file the agent writes to `/tmp` is gone by its next call. The container's
 help, because inside the cage only the session's project directory is
 writable; `/workspace` itself is read-only.
 
-So every variant sets `BASH_ENV=/opt/deepseek-harness-augmented/bash-env.sh`
+So every variant sets `BASH_ENV=/opt/deepseek-harness-augmented/augmented-bash-env`
 ([scripts/augmented-bash-env](scripts/augmented-bash-env)). bash sources it
 before each tool call. It points `TMPDIR` at `<project>/.tmp` (the topmost
 writable directory between `/workspace` and the current directory), creating
@@ -133,7 +133,7 @@ nothing outside `/workspace/<project>`. Add `.tmp/` to your projects'
 environment file on a tools volume), source ours from it:
 
 ```bash
-. /opt/deepseek-harness-augmented/bash-env.sh
+. /opt/deepseek-harness-augmented/augmented-bash-env
 ```
 
 ## Run

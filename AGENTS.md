@@ -48,7 +48,7 @@ short; do not put repository instructions there.
 | `tools/npm/package.json` + `package-lock.json` | npm CLIs (exact versions) and the `allowScripts` install-script policy. |
 | `tools/python/requirements.txt` | Python libraries (exact `==` pins, wheels only). |
 | `scripts/install-dsh-plugins.mjs` | Build-time: installs the plugins with `dsh plugin --profile web add`, grants exemptions to incompatible *disabled* plugins, deselects disabled ones, pins the pnpm store. |
-| `scripts/augmented-bash-env` | Runtime: baked at `/opt/deepseek-harness-augmented/bash-env.sh` and named by `BASH_ENV`, so every agent `bash -c` gets `TMPDIR=<project>/.tmp`. Must never fail or print; its header says why it exists. |
+| `scripts/augmented-bash-env` | Runtime: baked at `/opt/deepseek-harness-augmented/augmented-bash-env` and named by `BASH_ENV`, so every agent `bash -c` gets `TMPDIR=<project>/.tmp`. Must never fail or print; its header says why it exists. |
 | `scripts/augmented-entrypoint` | Runtime: seeds a Harness home that has no `web` profile, never edits an existing one, then execs upstream's entrypoint. |
 | `scripts/refresh-checksums.py` | Recomputes per-arch sha256 ARGs for release binaries and cross-checks them against upstream-published checksums. |
 | `scripts/static-check.sh [--online]` | All checks that need no Docker daemon. **Run it before every push.** |

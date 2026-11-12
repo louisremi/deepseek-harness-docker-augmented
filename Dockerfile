@@ -239,7 +239,7 @@ COPY agents/ /opt/deepseek-harness-augmented/agents/
 # ---------- Persistent per-project TMPDIR -----------------------------------
 # bash sources $BASH_ENV before every dsh tool call; the script points TMPDIR
 # at <project>/.tmp (why: its header and README "Scratch files and /tmp").
-COPY scripts/augmented-bash-env /opt/deepseek-harness-augmented/bash-env.sh
+COPY scripts/augmented-bash-env /opt/deepseek-harness-augmented/augmented-bash-env
 
 # Upstream binaries (dsh, pnpm, node, python3, chromium) keep precedence:
 # devtools are appended to PATH, never prepended.
@@ -247,7 +247,7 @@ ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/devto
     DSH_AGENTS_HOME=/opt/deepseek-harness-augmented/agents \
     PLAYWRIGHT_BROWSERS_PATH=0 \
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
-    BASH_ENV=/opt/deepseek-harness-augmented/bash-env.sh
+    BASH_ENV=/opt/deepseek-harness-augmented/augmented-bash-env
 
 # ---------- Manifest (drives "publish only when something changed") --------
 COPY scripts/write-manifest.sh /usr/local/lib/deepseek-harness-augmented/write-manifest.sh

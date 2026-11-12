@@ -190,7 +190,7 @@ pass "agents/AGENTS.md baked at \$DSH_AGENTS_HOME, read-only"
 # --- 6. per-project TMPDIR via BASH_ENV ---------------------------------------
 # dsh runs every tool call as `bash -c` (inside bwrap on the bwrap variant,
 # with a fresh /tmp each time); BASH_ENV must point TMPDIR at <project>/.tmp.
-bash_env=/opt/deepseek-harness-augmented/bash-env.sh
+bash_env=/opt/deepseek-harness-augmented/augmented-bash-env
 run "
   test \"\${BASH_ENV}\" = ${bash_env}
   test \"\$(stat -c '%U:%G %a' ${bash_env})\" = 'root:root 644'

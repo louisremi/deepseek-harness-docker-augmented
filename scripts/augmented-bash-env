@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # Per-project TMPDIR for the agent's shell. Installed at
-# /opt/deepseek-harness-augmented/bash-env.sh and named by ENV BASH_ENV, so
+# /opt/deepseek-harness-augmented/augmented-bash-env and named by ENV BASH_ENV, so
 # bash sources it before every non-interactive `bash -c`, i.e. every dsh tool
 # call (dsh runs `bash -c <command>`, inside its sandbox when there is one).
 #
@@ -27,7 +27,7 @@
 #   mkdir runs once per project.
 #
 # Users who set their own BASH_ENV replace this file; source it from theirs:
-#   . /opt/deepseek-harness-augmented/bash-env.sh
+#   . /opt/deepseek-harness-augmented/augmented-bash-env
 
 { __dsh_tmp_flags=$-; set +x; } 2>/dev/null
 
