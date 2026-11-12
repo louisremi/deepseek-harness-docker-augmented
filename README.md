@@ -22,16 +22,6 @@ named after the default tag, listing all three images. Images are linux/amd64
 and linux/arm64. Upstream's `-market` image is not derived: its plugin market
 ships here as a plugin you can switch on (below).
 
-> **Breaking change in `…-augmented.2`:** `latest` used to be the bubblewrap
-> build and is now the **default** variant, like upstream's default image. If
-> your host has no Landlock (Unraid, some NAS kernels) and you rely on the
-> bubblewrap sandbox, switch to `:bwrap` and add
-> [compose.bwrap.yaml](compose.bwrap.yaml).
->
-> Previously published as `louisremi/deepseek-harness-dev` and
-> `louisremi/deepseek-harness-devkit` (`…-dev.N`). Those repositories are
-> deprecated and get no new tags.
-
 ## What's added on top of upstream
 
 **1. SameSite=Lax session cookie** (all variants). With `Strict`, an installed
