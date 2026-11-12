@@ -15,7 +15,9 @@
 #   2. developer tooling from HolyClaude's "both variants" list, minus its AI
 #      CLIs and minus what upstream already ships;
 #   3. dsh plugins pre-installed in a seed `web` profile (tools/dsh-plugins);
-#   4. a model-facing AGENTS.md describing all of the above (agents/AGENTS.md).
+#   4. a model-facing AGENTS.md describing all of the above (agents/AGENTS.md);
+#   5. BASH_ENV, giving the agent's shell a persistent per-project TMPDIR
+#      (scripts/augmented-bash-env).
 # Everything is pinned and kept current by Renovate (renovate.json5). Read the
 # repository's AGENTS.md before editing this file.
 
@@ -235,12 +237,8 @@ COPY scripts/augmented-entrypoint /usr/local/bin/augmented-entrypoint
 COPY agents/ /opt/deepseek-harness-augmented/agents/
 
 # ---------- Persistent per-project TMPDIR -----------------------------------
-# Under bwrap every tool call gets a fresh, empty /tmp, and only the session
-# workspace is writable inside the cage (/workspace itself is read-only), so a
-# static TMPDIR cannot work. bash sources $BASH_ENV before each `bash -c` (every
-# dsh tool call); the script points TMPDIR at <project>/.tmp. It is a no-op
-# when TMPDIR is already a writable directory; shipped in every variant for
-# uniformity. A user's own BASH_ENV replaces it (README: source it from there).
+# bash sources $BASH_ENV before every dsh tool call; the script points TMPDIR
+# at <project>/.tmp (why: its header and README "Scratch files and /tmp").
 COPY scripts/augmented-bash-env /opt/deepseek-harness-augmented/bash-env.sh
 
 # Upstream binaries (dsh, pnpm, node, python3, chromium) keep precedence:
@@ -256,9 +254,8 @@ COPY scripts/write-manifest.sh /usr/local/lib/deepseek-harness-augmented/write-m
 RUN set -eux; \
     chmod 0755 /usr/local/bin/augmented-entrypoint /usr/local/lib/deepseek-harness-augmented/write-manifest.sh; \
     sh -n /usr/local/bin/augmented-entrypoint; \
-    chown root:root /opt/deepseek-harness-augmented/bash-env.sh; \
-    chmod 0644 /opt/deepseek-harness-augmented/bash-env.sh; \
-    bash -n /opt/deepseek-harness-augmented/bash-env.sh; \
+    chmod 0644 "${BASH_ENV}"; \
+    bash -n "${BASH_ENV}"; \
     case "${VARIANT}" in \
       default) base="${BASE_DEFAULT}" ;; bwrap) base="${BASE_BWRAP}" ;; ungoogled) base="${BASE_UNGOOGLED}" ;; \
     esac; \

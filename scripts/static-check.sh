@@ -48,17 +48,16 @@ agents_home() {
     && grep -qE '^    DSH_AGENTS_HOME=/opt/deepseek-harness-augmented/agents \\$' Dockerfile \
     && test -s agents/AGENTS.md
 }
-check "bubblewrap contract assertion (bwrap variant) + sandbox-chain guard present, no local install, no setuid" bwrap_contract
-check "SameSite=Lax patch + guard present" lax_patch
 bash_env() {
   grep -qF 'COPY scripts/augmented-bash-env /opt/deepseek-harness-augmented/bash-env.sh' Dockerfile \
     && grep -qE '^    BASH_ENV=/opt/deepseek-harness-augmented/bash-env.sh$' Dockerfile \
-    && grep -qF 'bash -n /opt/deepseek-harness-augmented/bash-env.sh' Dockerfile \
+    && grep -qF 'bash -n "${BASH_ENV}"' Dockerfile \
     && ! grep -Eq '^[^#]*TMPDIR' compose.yaml compose.bwrap.yaml
 }
+check "bubblewrap contract assertion (bwrap variant) + sandbox-chain guard present, no local install, no setuid" bwrap_contract
+check "SameSite=Lax patch + guard present" lax_patch
 check "model-facing AGENTS.md wired through DSH_AGENTS_HOME (with guard)" agents_home
-check "BASH_ENV script baked and wired, syntax-checked; compose sets no TMPDIR" bash_env
-check "augmented-bash-env parses (bash -n)" bash -n scripts/augmented-bash-env
+check "BASH_ENV script baked, wired and syntax-checked in the build; compose sets no TMPDIR" bash_env
 
 step "base image pins"
 base_pins() {
@@ -346,6 +345,7 @@ if command -v shellcheck >/dev/null 2>&1; then
 else
   skip "shellcheck not installed"
 fi
+check "augmented-bash-env parses (bash -n)" bash -n scripts/augmented-bash-env
 check "refresh-checksums.py compiles" python3 -m py_compile scripts/refresh-checksums.py
 check "install-dsh-plugins.mjs parses" node --check scripts/install-dsh-plugins.mjs
 

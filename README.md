@@ -123,7 +123,8 @@ So every variant sets `BASH_ENV=/opt/deepseek-harness-augmented/bash-env.sh`
 ([scripts/augmented-bash-env](scripts/augmented-bash-env)). bash sources it
 before each tool call. It points `TMPDIR` at `<project>/.tmp` (the topmost
 writable directory between `/workspace` and the current directory), creating
-it if needed. It persists, works from subdirectories, and allows executables.
+it if needed, with an empty `.dsh-tmpdir` marker from its write test. It
+persists, works from subdirectories, and allows executables.
 It leaves `TMPDIR` alone when that is already a writable directory, and does
 nothing outside `/workspace/<project>`. Add `.tmp/` to your projects'
 `.gitignore`; the model-facing AGENTS.md tells the agent the same.
