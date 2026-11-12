@@ -1,12 +1,12 @@
 # Playbook: tool / library bump failed
 
-## Checksums (release binaries: gh, yq, fzf, atuin, cursor-agent)
+## Checksums (release binaries: gh, yq, fzf, atuin)
 
 Symptoms: `sha256sum: WARNING: 1 computed checksum did NOT match`, a 404 in a
 `fetch`, or `static-check` "checksum drift".
 
 ```bash
-python3 scripts/refresh-checksums.py --tool <depName>   # cli/cli, mikefarah/yq, junegunn/fzf, atuinsh/atuin, cursor-agent
+python3 scripts/refresh-checksums.py --tool <depName>   # cli/cli, mikefarah/yq, junegunn/fzf, atuinsh/atuin
 ```
 
 - If it aborts with *downloaded != published*: **stop**. That is a potential
@@ -32,9 +32,29 @@ npm install-scripts ls        # lists packages with install scripts lacking a de
   download of the tool itself), otherwise `false`. Explain in the commit.
 - `EBADENGINE` / needs newer Node than the base image (Node 24): pin the last
   version supporting Node 24.
-- A CLI renamed its bin: update the bin list in the Dockerfile's `npm ci` step
-  and the version checks in `scripts/smoke.sh`.
+- A CLI renamed its bin: update the bin list in the Dockerfile's `npm ci` step,
+  the version checks in `scripts/smoke.sh` and the command list in
+  `agents/AGENTS.md`.
+- Never add AI CLIs (Claude Code, Gemini, Codex, Cursor, Task Master, …):
+  excluded on purpose, and `static-check.sh` rejects them.
 - Peer conflicts (`ERESOLVE`): prefer holding back the bumped package.
+
+## dsh plugins (`tools/dsh-plugins/package.json`)
+
+Exact pins, installed at build time by `scripts/install-dsh-plugins.mjs`
+through `dsh plugin --profile web add`. No lockfile: do not run npm there.
+
+- `PLUGIN GUARD: … is enabled by default but incompatible with dsh …`: the new
+  plugin version narrowed its DSH peer ranges. Hold it back to the last
+  compatible version and say so. Never move a plugin from `enabled` to disabled
+  to make CI pass: that is a human decision.
+- `PLUGIN NOTICE: … ships disabled with an exact-version exemption`: expected
+  for a disabled plugin; not a failure.
+- The smoke test's "with every bundled plugin enabled" step logs a warning,
+  not a failure, for errors from disabled plugins. Mention it in the PR.
+- A plugin stops being a dsh bundle (`is not a dsh bundle`), or its install
+  needs build scripts (the published tarball should be prebuilt): **stop and
+  report**.
 
 ## Python (`tools/python/requirements.txt`)
 
@@ -51,4 +71,5 @@ The venv installs **wheels only** for CPython 3.13 on x86_64 and aarch64.
 
 Unpinned by design (they follow the base image and the weekly rebuild). If a
 package disappears from trixie, find its replacement on packages.debian.org
-and update the list plus the `command -v` list in `scripts/smoke.sh`.
+and update the list. If it provides a command listed in `agents/AGENTS.md`,
+update that file too (the smoke test checks every listed command).

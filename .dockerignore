@@ -1,5 +1,9 @@
 *
+!agents/
 !tools/npm/package.json
 !tools/npm/package-lock.json
 !tools/python/requirements.txt
+!tools/dsh-plugins/package.json
 !scripts/write-manifest.sh
+!scripts/install-dsh-plugins.mjs
+!scripts/augmented-entrypoint

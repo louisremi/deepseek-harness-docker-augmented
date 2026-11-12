@@ -24,8 +24,6 @@ egress:
   - hub.docker.com
   - registry-1.docker.io
   - auth.docker.io
-  - cursor.com
-  - downloads.cursor.com
 
 links:
   - https://hub.docker.com/r/louisremi/deepseek-harness-augmented

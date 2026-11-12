@@ -1,0 +1,52 @@
+# louisremi/deepseek-harness-augmented. Mirrors upstream's hardened compose.yaml
+# (https://github.com/runzhliu/deepseek-harness-docker), with our image.
+#
+#   DSH_WORKSPACE=/absolute/path/to/project docker compose up -d
+#   docker compose logs deepseek-harness | grep 'dsh web:'
+#
+# Variants: DSH_AUGMENTED_TAG=latest (default variant), ungoogled, or an
+# immutable tag such as 0.2.1-alpha.2-r1-augmented.2. Hosts without Landlock
+# (e.g. Unraid) need the bubblewrap variant and its security options:
+#   docker compose -f compose.yaml -f compose.bwrap.yaml up -d
+services:
+  deepseek-harness:
+    image: docker.io/louisremi/deepseek-harness-augmented:${DSH_AUGMENTED_TAG:-latest}
+    ports:
+      - "127.0.0.1:${DSH_PORT:-3080}:3080"
+      - "127.0.0.1:${DSH_DESKTOP_PORT:-6080}:6080"
+    environment:
+      DSH_TELEMETRY_DISABLED: "1"
+      DSH_DESKTOP_ENABLED: "1"
+      DSH_BROWSER_USE_ENABLED: ${DSH_BROWSER_USE_ENABLED:-1}
+      DSH_WEB_RELAY_INTERFACE: ${DSH_WEB_RELAY_INTERFACE:-}
+      DSH_DESKTOP_PUBLIC_PORT: ${DSH_DESKTOP_PORT:-6080}
+      HOME: /workspace
+    volumes:
+      # The image seeds a Harness home without a `web` profile with its
+      # pre-installed dsh plugins (named volume or bind mount alike).
+      - dsh-home:/home/node/.dsh
+      - ${DSH_WORKSPACE:-dsh-workspace}:/workspace
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=512m
+    shm_size: "1gb"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "Promise.all([fetch('http://127.0.0.1:3080/'), fetch('http://127.0.0.1:6080/vnc.html'), fetch('http://127.0.0.1:9222/json/version')]).then(([web, desktop, cdp]) => { if (web.status !== 401 || !desktop.ok || !cdp.ok) process.exit(1) }).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 3s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  dsh-home:
+  dsh-workspace:

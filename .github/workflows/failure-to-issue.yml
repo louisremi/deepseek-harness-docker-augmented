@@ -17,7 +17,7 @@ permissions: {}
 jobs:
   ci-failure:
     if: github.event.workflow_run.head_repository.full_name == github.repository
-    uses: louisremi/maintainer-agent/.github/workflows/ci-failure-issue.yml@232fecaa8ebc196c28dbc637651fb2f24ff665c2 # v0.1.1
+    uses: louisremi/maintainer-agent/.github/workflows/ci-failure-issue.yml@d22aea1cc84427e852ded3140430a4aa6f377a18 # v0.3.0
     with:
       branches: "main renovate/* maintainer-agent/main-fix-*"
     permissions:
