@@ -10,9 +10,11 @@
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: ['config:recommended', ':dependencyDashboard', ':semanticCommitTypeAll(chore)'],
 
-  dependencyDashboardTitle: 'Dependency Dashboard (Renovate)',
-  // Keep the issue agent away from the dashboard.
-  dependencyDashboardLabels: ['no-triage'],
+  dependencyDashboard: {
+    title: 'Dependency Dashboard (Renovate)',
+    // Keep the issue agent away from the dashboard.
+    labels: ['no-triage'],
+  },
   labels: ['renovate'],
   timezone: 'Europe/Paris',
   prHourlyLimit: 0,
