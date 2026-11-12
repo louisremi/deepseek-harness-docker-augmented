@@ -309,6 +309,43 @@ code="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.
 [[ "${code}" == 401 ]] || fail "unauthenticated GET /api/download.file returned ${code}, expected 401"
 pass "fresh volume seeded; dsh-always-on loaded (/api/download.file: 401 unauthenticated, 400 authenticated)"
 
+# dsh-always-on's trust boundary over HTTP. Every route it serves is on the
+# authenticated /api connection: no cookie -> 401, a cross-site or
+# foreign-Origin request -> 403 even with the cookie, and the owner's own
+# request reaches the handler (400 for an empty body). A route this plugin
+# version does not have answers 401 unauthenticated too, so only the
+# authenticated probe proves the route exists; routes added by newer versions
+# are probed when the pinned version is new enough to ship them.
+always_on_version="$(plugin_version @louisremi/dsh-always-on)"
+always_on_routes=(save.file)
+if [[ "$(printf '%s\n' 0.4.0 "${always_on_version}" | sort -V | head -n1)" == 0.4.0 ]]; then
+  always_on_routes+=(create.file create.folder rename.file delete.file)
+fi
+api() {  # api <path> [curl args...]; prints the status code
+  local path="$1"; shift
+  curl --silent --output /dev/null --write-out '%{http_code}' "$@" "http://127.0.0.1:${port}/api/${path}"
+}
+for route in "${always_on_routes[@]}"; do
+  post=(--request POST --header 'content-type: application/json' --data '{}')
+  code="$(api "${route}" "${post[@]}")"
+  [[ "${code}" == 401 ]] || fail "unauthenticated POST /api/${route} returned ${code}, expected 401"
+  code="$(api "${route}" "${post[@]}" --cookie "${cookie_jar}" --header 'Sec-Fetch-Site: cross-site')"
+  [[ "${code}" == 403 ]] || fail "cross-site POST /api/${route} returned ${code}, expected 403"
+  code="$(api "${route}" "${post[@]}" --cookie "${cookie_jar}" --header 'Origin: https://evil.example')"
+  [[ "${code}" == 403 ]] || fail "foreign-Origin POST /api/${route} returned ${code}, expected 403"
+  code="$(api "${route}" "${post[@]}" --cookie "${cookie_jar}")"
+  [[ "${code}" == 400 ]] || fail "authenticated POST /api/${route} {} returned ${code}, expected 400 (route missing?)"
+done
+code="$(api download.file --cookie "${cookie_jar}" --header 'Sec-Fetch-Site: cross-site')"
+[[ "${code}" == 403 ]] || fail "cross-site GET /api/download.file returned ${code}, expected 403"
+pass "dsh-always-on@${always_on_version} routes: 401 unauthenticated, 403 cross-site/foreign Origin (${always_on_routes[*]} download.file)"
+
+# Its writes on the image's own Harness filesystem stack follow the session's
+# sandbox mode: read-only and out-of-workspace saves are refused.
+docker exec -i "${main}" node --input-type=module - <"${root}/scripts/smoke-always-on.mjs" \
+  || fail "dsh-always-on wrote where the session's sandbox mode forbids it"
+pass "dsh-always-on saves follow the session sandbox (read-only, outside workspace, symlink escape refused)"
+
 dump="$(in_container "${main}" 'dsh --profile web --dump-config --patch /opt/deepseek-harness/web.cordis.patch.yml')"
 while read -r name; do
   if plugin_enabled "${name}"; then
