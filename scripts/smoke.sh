@@ -215,6 +215,12 @@ got="$(in_scratch "${proj}" env TMPDIR=/tmp bash -c 'echo "$TMPDIR"')"
 got="$(in_scratch /workspace env -u TMPDIR bash -c 'echo "[${TMPDIR-}]"')"
 [[ "${got}" == "[]" ]] || fail "cwd /workspace (no project) set TMPDIR to '${got}'"
 ! in_scratch / test -e /workspace/.tmp || fail "/workspace/.tmp was created"
+# The root is $HOME (upstream: /workspace), not a hard-coded path.
+in_scratch / mkdir -p /workspace/alt-home/proj
+got="$(in_scratch /workspace/alt-home/proj env -u TMPDIR HOME=/workspace/alt-home bash -c 'echo "$TMPDIR"')"
+[[ "${got}" == /workspace/alt-home/proj/.tmp ]] || fail "with HOME=/workspace/alt-home, TMPDIR is '${got}', expected /workspace/alt-home/proj/.tmp"
+got="$(in_scratch "${proj}" env -u TMPDIR -u HOME bash -c 'echo "[${TMPDIR-}]"')"
+[[ "${got}" == "[]" ]] || fail "with HOME unset, TMPDIR is '${got}', expected unset"
 for wd in "${proj}" "${proj}/sub/dir" /workspace / /tmp; do
   for env_args in "-u TMPDIR" "TMPDIR=/tmp" "TMPDIR=/nonexistent"; do
     # shellcheck disable=SC2086  # env_args is deliberately split
@@ -226,7 +232,7 @@ for wd in "${proj}" "${proj}/sub/dir" /workspace / /tmp; do
     [[ "${out}" == "+ :" ]] || fail "BASH_ENV script is traced under bash -x (cwd ${wd}, ${env_args}): ${out}"
   done
 done
-pass "BASH_ENV: TMPDIR=<project>/.tmp (also from subdirectories), persists across calls, pre-set TMPDIR kept, silent (also under -x)"
+pass "BASH_ENV: TMPDIR=<project>/.tmp under \$HOME (also from subdirectories, and for another HOME), persists across calls, pre-set TMPDIR kept, silent (also under -x)"
 
 if [[ "${variant}" == bwrap ]]; then
   # The cage dsh-sandbox-local builds in workspace-write mode: read-only /,

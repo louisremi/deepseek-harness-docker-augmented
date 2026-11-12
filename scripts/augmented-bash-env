@@ -1,61 +1,58 @@
 # shellcheck shell=bash
-# Per-project TMPDIR for the agent's shell. Installed at
-# /opt/deepseek-harness-augmented/augmented-bash-env and named by ENV BASH_ENV, so
-# bash sources it before every non-interactive `bash -c`, i.e. every dsh tool
-# call (dsh runs `bash -c <command>`, inside its sandbox when there is one).
-#
-# Why: under the bwrap sandbox each tool call gets a fresh, empty `--tmpfs
-# /tmp`, so scratch files vanish between calls. The container's /tmp is also
-# small and noexec. Inside the cage only the session workspace
-# (/workspace/<project>) is writable; /workspace itself is read-only, so a
-# static TMPDIR=/workspace/.tmp in the container environment cannot work.
-# This sets TMPDIR to <project>/.tmp instead, creating it if needed.
+# Per-project TMPDIR for the agent's shell, sourced via BASH_ENV before every
+# dsh tool call (`bash -c`, inside the sandbox). bwrap gives each call a fresh
+# /tmp and only the project is writable, so TMPDIR becomes <project>/.tmp.
+# Why, and what users with their own BASH_ENV must do: README.md, "Scratch
+# files and /tmp".
 #
 # Rules:
 # - A TMPDIR that is already a writable directory is left alone.
-# - Only paths under /workspace are considered (dsh exposes no workspace
-#   variable); the cwd /workspace itself, or a read-only project, leaves
-#   TMPDIR untouched. /workspace/.tmp is never created.
-# - The topmost directory under /workspace, on the way from /workspace down to
-#   $PWD, where <dir>/.tmp can really be written wins. A real write probe is
-#   used because Landlock does not answer access(2), so `test -w` can claim a
-#   directory is writable when the sandbox would refuse the write.
-# - It must never fail, print, or leak variables: every `bash -c` (including
-#   `bash -euo pipefail -c`) sources it. Under `bash -x` its own lines are not
-#   traced (the one-line xtrace guard below runs with stderr discarded), unless
-#   BASH_XTRACEFD sends the trace elsewhere. Builtins only on the hot path;
-#   mkdir runs once per project.
-#
-# Users who set their own BASH_ENV replace this file; source it from theirs:
-#   . /opt/deepseek-harness-augmented/augmented-bash-env
+# - Projects live under $HOME (upstream sets HOME=/workspace, the mount point).
+#   Nothing happens when HOME is unset or /, outside $HOME, or at $HOME itself;
+#   $HOME/.tmp is never created.
+# - Walking from $HOME down to $PWD, the first directory whose .tmp can really
+#   be written wins. The write probe (.tmp/.dsh-tmpdir) is needed because
+#   Landlock does not answer access(2): `test -w` alone can say yes when the
+#   sandbox would refuse the write.
+# - Never fail, print or leak variables: every `bash -c` sources this, also
+#   under `set -euo pipefail`. Under `bash -x` its lines are not traced (the
+#   guard below runs with stderr discarded) unless BASH_XTRACEFD points
+#   elsewhere. Builtins only on the hot path; mkdir runs once per project.
 
 { __dsh_tmp_flags=$-; set +x; } 2>/dev/null
 
 if ! { [ -d "${TMPDIR:-}" ] && [ -w "${TMPDIR:-}" ]; }; then
-  case $PWD in
+  __dsh_tmp_root=${HOME:-}
+  __dsh_tmp_root=${__dsh_tmp_root%/}
+  case $__dsh_tmp_root in
     */./* | */../* | */. | */.. | *//*) ;;
-    /workspace/?*)
-      __dsh_tmp_rest=${PWD#/workspace/}
-      __dsh_tmp_dir=/workspace
-      while [ -n "$__dsh_tmp_rest" ]; do
-        __dsh_tmp_dir=$__dsh_tmp_dir/${__dsh_tmp_rest%%/*}
-        case $__dsh_tmp_rest in
-          */*) __dsh_tmp_rest=${__dsh_tmp_rest#*/} ;;
-          *) __dsh_tmp_rest= ;;
-        esac
-        if [ -w "$__dsh_tmp_dir" ] \
-          && { [ -d "$__dsh_tmp_dir/.tmp" ] || mkdir -m 0700 "$__dsh_tmp_dir/.tmp" 2>/dev/null; } \
-          && [ -w "$__dsh_tmp_dir/.tmp" ] \
-          && { true >>"$__dsh_tmp_dir/.tmp/.dsh-tmpdir"; } 2>/dev/null; then
-          export TMPDIR="$__dsh_tmp_dir/.tmp"
-          break
-        fi
-      done
+    /?*)
+      case $PWD in
+        */./* | */../* | */. | */.. | *//*) ;;
+        "$__dsh_tmp_root"/?*)
+          __dsh_tmp_rest=${PWD#"$__dsh_tmp_root"/}
+          __dsh_tmp_dir=$__dsh_tmp_root
+          while [ -n "$__dsh_tmp_rest" ]; do
+            __dsh_tmp_dir=$__dsh_tmp_dir/${__dsh_tmp_rest%%/*}
+            case $__dsh_tmp_rest in
+              */*) __dsh_tmp_rest=${__dsh_tmp_rest#*/} ;;
+              *) __dsh_tmp_rest= ;;
+            esac
+            if [ -w "$__dsh_tmp_dir" ] \
+              && { [ -d "$__dsh_tmp_dir/.tmp" ] || mkdir -m 0700 "$__dsh_tmp_dir/.tmp" 2>/dev/null; } \
+              && [ -w "$__dsh_tmp_dir/.tmp" ] \
+              && { true >>"$__dsh_tmp_dir/.tmp/.dsh-tmpdir"; } 2>/dev/null; then
+              export TMPDIR="$__dsh_tmp_dir/.tmp"
+              break
+            fi
+          done
+          ;;
+      esac
       ;;
   esac
 fi
 
-unset __dsh_tmp_rest __dsh_tmp_dir
+unset __dsh_tmp_root __dsh_tmp_rest __dsh_tmp_dir
 case $__dsh_tmp_flags in
   *x*) unset __dsh_tmp_flags; set -x ;;
   *) unset __dsh_tmp_flags ;;

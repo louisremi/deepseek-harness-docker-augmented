@@ -49,8 +49,9 @@ agents_home() {
     && test -s agents/AGENTS.md
 }
 bash_env() {
-  grep -qF 'COPY scripts/augmented-bash-env /opt/deepseek-harness-augmented/augmented-bash-env' Dockerfile \
-    && grep -qE '^    BASH_ENV=/opt/deepseek-harness-augmented/augmented-bash-env$' Dockerfile \
+  grep -qxF 'ARG BASH_ENV_SCRIPT=/opt/deepseek-harness-augmented/augmented-bash-env' Dockerfile \
+    && grep -qxF 'COPY scripts/augmented-bash-env ${BASH_ENV_SCRIPT}' Dockerfile \
+    && grep -qxF '    BASH_ENV=${BASH_ENV_SCRIPT}' Dockerfile \
     && grep -qF 'bash -n "${BASH_ENV}"' Dockerfile \
     && ! grep -Eq '^[^#]*TMPDIR' compose.yaml compose.bwrap.yaml
 }
