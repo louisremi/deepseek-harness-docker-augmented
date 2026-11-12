@@ -187,7 +187,7 @@ cmp -s <(docker run --rm --entrypoint cat "${image}" /opt/deepseek-harness-augme
   || fail "baked AGENTS.md differs from agents/AGENTS.md"
 pass "agents/AGENTS.md baked at \$DSH_AGENTS_HOME, read-only"
 
-# --- 5b. per-project TMPDIR via BASH_ENV --------------------------------------
+# --- 6. per-project TMPDIR via BASH_ENV ---------------------------------------
 # dsh runs every tool call as `bash -c` (inside bwrap on the bwrap variant,
 # with a fresh /tmp each time); BASH_ENV must point TMPDIR at <project>/.tmp.
 bash_env=/opt/deepseek-harness-augmented/bash-env.sh
@@ -207,7 +207,7 @@ got="$(in_scratch "${proj}" bash -c 'echo "$TMPDIR"')"
 [[ "${got}" == "${proj}/.tmp" ]] || fail "TMPDIR in ${proj} is '${got}', expected ${proj}/.tmp"
 got="$(in_scratch "${proj}/sub/dir" bash -c 'echo "$TMPDIR"')"
 [[ "${got}" == "${proj}/.tmp" ]] || fail "TMPDIR in a subdirectory is '${got}', expected ${proj}/.tmp"
-in_scratch "${proj}" bash -ec 'test -d "$TMPDIR" && test -w "$TMPDIR"; f="$(mktemp)"; [ "${f%/*}" = "$TMPDIR" ]; echo kept > "$TMPDIR/persist"' \
+in_scratch "${proj}" bash -ec 'test -d "$TMPDIR"; test -w "$TMPDIR"; f="$(mktemp)"; test "${f%/*}" = "$TMPDIR"; echo kept > "$TMPDIR/persist"' \
   || fail "\$TMPDIR is not a writable directory (or mktemp ignores it)"
 [[ "$(in_scratch "${proj}/sub" bash -c 'cat "$TMPDIR/persist"')" == kept ]] || fail "a file written to \$TMPDIR did not survive to the next docker exec"
 got="$(in_scratch "${proj}" env TMPDIR=/tmp bash -c 'echo "$TMPDIR"')"
@@ -220,9 +220,13 @@ for wd in "${proj}" "${proj}/sub/dir" /workspace / /tmp; do
     # shellcheck disable=SC2086  # env_args is deliberately split
     out="$(in_scratch "${wd}" env ${env_args} bash -euo pipefail -c ':' 2>&1)" || fail "BASH_ENV script fails under set -euo pipefail (cwd ${wd}, ${env_args})"
     [[ -z "${out}" ]] || fail "BASH_ENV script printed output (cwd ${wd}, ${env_args}): ${out}"
+    # Under -x only the command itself may be traced, not the script.
+    # shellcheck disable=SC2086
+    out="$(in_scratch "${wd}" env ${env_args} bash -x -c ':' 2>&1)" || fail "BASH_ENV script fails under bash -x (cwd ${wd}, ${env_args})"
+    [[ "${out}" == "+ :" ]] || fail "BASH_ENV script is traced under bash -x (cwd ${wd}, ${env_args}): ${out}"
   done
 done
-pass "BASH_ENV: TMPDIR=<project>/.tmp (also from subdirectories), persists across calls, pre-set TMPDIR kept, silent"
+pass "BASH_ENV: TMPDIR=<project>/.tmp (also from subdirectories), persists across calls, pre-set TMPDIR kept, silent (also under -x)"
 
 if [[ "${variant}" == bwrap ]]; then
   # The cage dsh-sandbox-local builds in workspace-write mode: read-only /,
@@ -237,9 +241,8 @@ if [[ "${variant}" == bwrap ]]; then
     || fail "a file written to \$TMPDIR in one bwrap cage is not visible in the next"
   pass "bwrap cage: TMPDIR=<project>/.tmp is writable and survives the next cage (its /tmp does not)"
 fi
-docker container rm --force "${scratch}" >/dev/null
 
-# --- 6. seed profile ----------------------------------------------------------
+# --- 7. seed profile ----------------------------------------------------------
 run 'test -z "$(ls -A "${DSH_HOME}")"' || fail "the image's own \$DSH_HOME is not empty (the profile must live in the seed)"
 seed_manifest="$(docker run --rm --entrypoint cat "${image}" /opt/deepseek-harness-augmented/seed/profiles/web/package.json)"
 while read -r name; do
@@ -251,7 +254,7 @@ while read -r name; do
 done < <(plugin_names)
 pass "seed web profile: $(plugin_names | while read -r n; do printf '%s@%s(%s) ' "${n}" "$(plugin_version "${n}")" "$(plugin_enabled "${n}" && echo on || echo off)"; done)"
 
-# --- 7. runtime: dsh web on a fresh named volume -----------------------------
+# --- 8. runtime: dsh web on a fresh named volume -----------------------------
 start() {  # start <name> <volume args...>; prints the host port
   local name="$1"; shift
   containers+=("${name}")
@@ -341,7 +344,7 @@ if grep -Eqi 'failed to load plugin|plugin tree failed|incompatible|error' <<<"$
 fi
 pass "dsh web still boots with every bundled plugin enabled"
 
-# --- 8. runtime: bind-mount-like empty home, and an existing profile --------
+# --- 9. runtime: bind-mount-like empty home, and an existing profile --------
 empty="dsh-augmented-smoke-empty-${suffix}"
 port="$(start "${empty}" --tmpfs /home/node/.dsh:rw,nosuid,nodev,size=256m,uid=1000,gid=1000)"
 wait_ready "${empty}" "${port}"

@@ -21,16 +21,15 @@
 #   used because Landlock does not answer access(2), so `test -w` can claim a
 #   directory is writable when the sandbox would refuse the write.
 # - It must never fail, print, or leak variables: every `bash -c` (including
-#   `bash -euo pipefail -c` and `bash -x -c`) sources it. Builtins only on the
-#   hot path; mkdir runs once per project.
+#   `bash -euo pipefail -c`) sources it. Under `bash -x` its own lines are not
+#   traced (the one-line xtrace guard below runs with stderr discarded), unless
+#   BASH_XTRACEFD sends the trace elsewhere. Builtins only on the hot path;
+#   mkdir runs once per project.
 #
 # Users who set their own BASH_ENV replace this file; source it from theirs:
 #   . /opt/deepseek-harness-augmented/bash-env.sh
 
-case $- in
-  *x*) __dsh_tmp_x=1; { set +x; } 2>/dev/null ;;
-  *) __dsh_tmp_x= ;;
-esac
+{ __dsh_tmp_flags=$-; set +x; } 2>/dev/null
 
 if ! { [ -d "${TMPDIR:-}" ] && [ -w "${TMPDIR:-}" ]; }; then
   case $PWD in
@@ -57,9 +56,7 @@ if ! { [ -d "${TMPDIR:-}" ] && [ -w "${TMPDIR:-}" ]; }; then
 fi
 
 unset __dsh_tmp_rest __dsh_tmp_dir
-if [ -n "${__dsh_tmp_x-}" ]; then
-  unset __dsh_tmp_x
-  set -x
-else
-  unset __dsh_tmp_x
-fi
+case $__dsh_tmp_flags in
+  *x*) unset __dsh_tmp_flags; set -x ;;
+  *) unset __dsh_tmp_flags ;;
+esac
