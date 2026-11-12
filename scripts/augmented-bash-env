@@ -1,0 +1,59 @@
+# shellcheck shell=bash
+# Per-project TMPDIR for the agent's shell, sourced via BASH_ENV before every
+# dsh tool call (`bash -c`, inside the sandbox). bwrap gives each call a fresh
+# /tmp and only the project is writable, so TMPDIR becomes <project>/.tmp.
+# Why, and what users with their own BASH_ENV must do: README.md, "Scratch
+# files and /tmp".
+#
+# Rules:
+# - A TMPDIR that is already a writable directory is left alone.
+# - Projects live under $HOME (upstream sets HOME=/workspace, the mount point).
+#   Nothing happens when HOME is unset or /, outside $HOME, or at $HOME itself;
+#   $HOME/.tmp is never created.
+# - Walking from $HOME down to $PWD, the first directory whose .tmp can really
+#   be written wins. The write probe (.tmp/.dsh-tmpdir) is needed because
+#   Landlock does not answer access(2): `test -w` alone can say yes when the
+#   sandbox would refuse the write.
+# - Never fail, print or leak variables: every `bash -c` sources this, also
+#   under `set -euo pipefail`. Under `bash -x` its lines are not traced (the
+#   guard below runs with stderr discarded) unless BASH_XTRACEFD points
+#   elsewhere. Builtins only on the hot path; mkdir runs once per project.
+
+{ __dsh_tmp_flags=$-; set +x; } 2>/dev/null
+
+if ! { [ -d "${TMPDIR:-}" ] && [ -w "${TMPDIR:-}" ]; }; then
+  __dsh_tmp_root=${HOME:-}
+  __dsh_tmp_root=${__dsh_tmp_root%/}
+  case $__dsh_tmp_root in
+    */./* | */../* | */. | */.. | *//*) ;;
+    /?*)
+      case $PWD in
+        */./* | */../* | */. | */.. | *//*) ;;
+        "$__dsh_tmp_root"/?*)
+          __dsh_tmp_rest=${PWD#"$__dsh_tmp_root"/}
+          __dsh_tmp_dir=$__dsh_tmp_root
+          while [ -n "$__dsh_tmp_rest" ]; do
+            __dsh_tmp_dir=$__dsh_tmp_dir/${__dsh_tmp_rest%%/*}
+            case $__dsh_tmp_rest in
+              */*) __dsh_tmp_rest=${__dsh_tmp_rest#*/} ;;
+              *) __dsh_tmp_rest= ;;
+            esac
+            if [ -w "$__dsh_tmp_dir" ] \
+              && { [ -d "$__dsh_tmp_dir/.tmp" ] || mkdir -m 0700 "$__dsh_tmp_dir/.tmp" 2>/dev/null; } \
+              && [ -w "$__dsh_tmp_dir/.tmp" ] \
+              && { true >>"$__dsh_tmp_dir/.tmp/.dsh-tmpdir"; } 2>/dev/null; then
+              export TMPDIR="$__dsh_tmp_dir/.tmp"
+              break
+            fi
+          done
+          ;;
+      esac
+      ;;
+  esac
+fi
+
+unset __dsh_tmp_root __dsh_tmp_rest __dsh_tmp_dir
+case $__dsh_tmp_flags in
+  *x*) unset __dsh_tmp_flags; set -x ;;
+  *) unset __dsh_tmp_flags ;;
+esac

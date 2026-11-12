@@ -110,6 +110,34 @@ matches the image). Your own `~/.dsh/AGENTS.md` still loads first, and project
 override `DSH_AGENTS_HOME`, e.g. `/workspace/.agents`. CI checks that every
 command the file lists exists in the image.
 
+## Scratch files and `/tmp`
+
+Under the bwrap sandbox (the `bwrap` variant, or any host where dsh falls back
+to bubblewrap) every tool call runs in a fresh cage with its own empty `/tmp`:
+a file the agent writes to `/tmp` is gone by its next call. The container's
+`/tmp` is also small and `noexec`. Setting `TMPDIR=/workspace/.tmp` does not
+help, because inside the cage only the session's project directory is
+writable; `/workspace` itself is read-only.
+
+So every variant sets `BASH_ENV=/opt/deepseek-harness-augmented/augmented-bash-env`
+([scripts/augmented-bash-env](scripts/augmented-bash-env)). bash sources it
+before each tool call. It points `TMPDIR` at `<project>/.tmp` (the topmost
+writable directory between `$HOME` and the current directory), creating it if
+needed, with an empty `.dsh-tmpdir` marker from its write test. It persists,
+works from subdirectories, and allows executables. It leaves `TMPDIR` alone
+when that is already a writable directory, and does nothing outside
+`$HOME/<project>`. Upstream sets `HOME=/workspace`, the workspace mount; if
+you mount projects elsewhere, set `HOME` to that mount point too. Add `.tmp/`
+to your projects' `.gitignore`; the model-facing AGENTS.md tells the agent the
+same.
+
+**Your own `BASH_ENV` replaces ours.** If you set `BASH_ENV` (e.g. to an
+environment file on a tools volume), source ours from it:
+
+```bash
+. /opt/deepseek-harness-augmented/augmented-bash-env
+```
+
 ## Run
 
 ```bash

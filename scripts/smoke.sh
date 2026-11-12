@@ -187,7 +187,68 @@ cmp -s <(docker run --rm --entrypoint cat "${image}" /opt/deepseek-harness-augme
   || fail "baked AGENTS.md differs from agents/AGENTS.md"
 pass "agents/AGENTS.md baked at \$DSH_AGENTS_HOME, read-only"
 
-# --- 6. seed profile ----------------------------------------------------------
+# --- 6. per-project TMPDIR via BASH_ENV ---------------------------------------
+# dsh runs every tool call as `bash -c` (inside bwrap on the bwrap variant,
+# with a fresh /tmp each time); BASH_ENV must point TMPDIR at <project>/.tmp.
+bash_env=/opt/deepseek-harness-augmented/augmented-bash-env
+run "
+  test \"\${BASH_ENV}\" = ${bash_env}
+  test \"\$(stat -c '%U:%G %a' ${bash_env})\" = 'root:root 644'
+  ! test -w ${bash_env}
+" || fail "BASH_ENV is not ${bash_env} (root-owned, 0644, read-only)"
+scratch="dsh-augmented-smoke-tmpdir-${suffix}"
+containers+=("${scratch}")
+docker run --detach --name "${scratch}" "${hardening[@]}" --entrypoint sleep "${image}" infinity >/dev/null
+in_scratch() { docker exec --workdir "$1" "${scratch}" "${@:2}"; }   # as the image's runtime user
+[[ "$(in_scratch / id -un)" == node ]] || fail "docker exec does not run as the runtime user node"
+in_scratch / mkdir -p /workspace/smoke-proj/sub/dir
+proj=/workspace/smoke-proj
+got="$(in_scratch "${proj}" bash -c 'echo "$TMPDIR"')"
+[[ "${got}" == "${proj}/.tmp" ]] || fail "TMPDIR in ${proj} is '${got}', expected ${proj}/.tmp"
+got="$(in_scratch "${proj}/sub/dir" bash -c 'echo "$TMPDIR"')"
+[[ "${got}" == "${proj}/.tmp" ]] || fail "TMPDIR in a subdirectory is '${got}', expected ${proj}/.tmp"
+in_scratch "${proj}" bash -ec 'test -d "$TMPDIR"; test -w "$TMPDIR"; f="$(mktemp)"; test "${f%/*}" = "$TMPDIR"; echo kept > "$TMPDIR/persist"' \
+  || fail "\$TMPDIR is not a writable directory (or mktemp ignores it)"
+[[ "$(in_scratch "${proj}/sub" bash -c 'cat "$TMPDIR/persist"')" == kept ]] || fail "a file written to \$TMPDIR did not survive to the next docker exec"
+got="$(in_scratch "${proj}" env TMPDIR=/tmp bash -c 'echo "$TMPDIR"')"
+[[ "${got}" == /tmp ]] || fail "a pre-set writable TMPDIR was changed to '${got}'"
+got="$(in_scratch /workspace env -u TMPDIR bash -c 'echo "[${TMPDIR-}]"')"
+[[ "${got}" == "[]" ]] || fail "cwd /workspace (no project) set TMPDIR to '${got}'"
+! in_scratch / test -e /workspace/.tmp || fail "/workspace/.tmp was created"
+# The root is $HOME (upstream: /workspace), not a hard-coded path.
+in_scratch / mkdir -p /workspace/alt-home/proj
+got="$(in_scratch /workspace/alt-home/proj env -u TMPDIR HOME=/workspace/alt-home bash -c 'echo "$TMPDIR"')"
+[[ "${got}" == /workspace/alt-home/proj/.tmp ]] || fail "with HOME=/workspace/alt-home, TMPDIR is '${got}', expected /workspace/alt-home/proj/.tmp"
+got="$(in_scratch "${proj}" env -u TMPDIR -u HOME bash -c 'echo "[${TMPDIR-}]"')"
+[[ "${got}" == "[]" ]] || fail "with HOME unset, TMPDIR is '${got}', expected unset"
+for wd in "${proj}" "${proj}/sub/dir" /workspace / /tmp; do
+  for env_args in "-u TMPDIR" "TMPDIR=/tmp" "TMPDIR=/nonexistent"; do
+    # shellcheck disable=SC2086  # env_args is deliberately split
+    out="$(in_scratch "${wd}" env ${env_args} bash -euo pipefail -c ':' 2>&1)" || fail "BASH_ENV script fails under set -euo pipefail (cwd ${wd}, ${env_args})"
+    [[ -z "${out}" ]] || fail "BASH_ENV script printed output (cwd ${wd}, ${env_args}): ${out}"
+    # Under -x only the command itself may be traced, not the script.
+    # shellcheck disable=SC2086
+    out="$(in_scratch "${wd}" env ${env_args} bash -x -c ':' 2>&1)" || fail "BASH_ENV script fails under bash -x (cwd ${wd}, ${env_args})"
+    [[ "${out}" == "+ :" ]] || fail "BASH_ENV script is traced under bash -x (cwd ${wd}, ${env_args}): ${out}"
+  done
+done
+pass "BASH_ENV: TMPDIR=<project>/.tmp under \$HOME (also from subdirectories, and for another HOME), persists across calls, pre-set TMPDIR kept, silent (also under -x)"
+
+if [[ "${variant}" == bwrap ]]; then
+  # The cage dsh-sandbox-local builds in workspace-write mode: read-only /,
+  # fresh /tmp, only the session workspace bound writable.
+  cage() {
+    docker exec --workdir / "${scratch}" env -u TMPDIR bwrap --ro-bind / / --dev /dev --unshare-pid --proc /proc --die-with-parent \
+      --tmpfs /tmp --bind "${proj}" "${proj}" --chdir "$1" -- bash -c "$2"
+  }
+  got="$(cage "${proj}/sub" 'if touch /workspace/escape 2>/dev/null; then exit 9; fi; echo "$TMPDIR"; echo caged > "$TMPDIR/caged"; touch /tmp/gone')"
+  [[ "${got}" == "${proj}/.tmp" ]] || fail "inside a bwrap cage TMPDIR is '${got}', expected ${proj}/.tmp"
+  [[ "$(cage "${proj}" 'cat "$TMPDIR/caged"; test ! -e /tmp/gone && echo fresh-tmp')" == $'caged\nfresh-tmp' ]] \
+    || fail "a file written to \$TMPDIR in one bwrap cage is not visible in the next"
+  pass "bwrap cage: TMPDIR=<project>/.tmp is writable and survives the next cage (its /tmp does not)"
+fi
+
+# --- 7. seed profile ----------------------------------------------------------
 run 'test -z "$(ls -A "${DSH_HOME}")"' || fail "the image's own \$DSH_HOME is not empty (the profile must live in the seed)"
 seed_manifest="$(docker run --rm --entrypoint cat "${image}" /opt/deepseek-harness-augmented/seed/profiles/web/package.json)"
 while read -r name; do
@@ -199,7 +260,7 @@ while read -r name; do
 done < <(plugin_names)
 pass "seed web profile: $(plugin_names | while read -r n; do printf '%s@%s(%s) ' "${n}" "$(plugin_version "${n}")" "$(plugin_enabled "${n}" && echo on || echo off)"; done)"
 
-# --- 7. runtime: dsh web on a fresh named volume -----------------------------
+# --- 8. runtime: dsh web on a fresh named volume -----------------------------
 start() {  # start <name> <volume args...>; prints the host port
   local name="$1"; shift
   containers+=("${name}")
@@ -289,7 +350,7 @@ if grep -Eqi 'failed to load plugin|plugin tree failed|incompatible|error' <<<"$
 fi
 pass "dsh web still boots with every bundled plugin enabled"
 
-# --- 8. runtime: bind-mount-like empty home, and an existing profile --------
+# --- 9. runtime: bind-mount-like empty home, and an existing profile --------
 empty="dsh-augmented-smoke-empty-${suffix}"
 port="$(start "${empty}" --tmpfs /home/node/.dsh:rw,nosuid,nodev,size=256m,uid=1000,gid=1000)"
 wait_ready "${empty}" "${port}"

@@ -15,7 +15,9 @@
 #   2. developer tooling from HolyClaude's "both variants" list, minus its AI
 #      CLIs and minus what upstream already ships;
 #   3. dsh plugins pre-installed in a seed `web` profile (tools/dsh-plugins);
-#   4. a model-facing AGENTS.md describing all of the above (agents/AGENTS.md).
+#   4. a model-facing AGENTS.md describing all of the above (agents/AGENTS.md);
+#   5. BASH_ENV, giving the agent's shell a persistent per-project TMPDIR
+#      (scripts/augmented-bash-env).
 # Everything is pinned and kept current by Renovate (renovate.json5). Read the
 # repository's AGENTS.md before editing this file.
 
@@ -234,18 +236,27 @@ COPY scripts/augmented-entrypoint /usr/local/bin/augmented-entrypoint
 # CLAUDE.md goes stale). Override DSH_AGENTS_HOME to use another directory.
 COPY agents/ /opt/deepseek-harness-augmented/agents/
 
+# ---------- Persistent per-project TMPDIR -----------------------------------
+# bash sources $BASH_ENV before every dsh tool call; the script points TMPDIR
+# at <project>/.tmp (why: README "Scratch files and /tmp").
+ARG BASH_ENV_SCRIPT=/opt/deepseek-harness-augmented/augmented-bash-env
+COPY scripts/augmented-bash-env ${BASH_ENV_SCRIPT}
+
 # Upstream binaries (dsh, pnpm, node, python3, chromium) keep precedence:
 # devtools are appended to PATH, never prepended.
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/devtools/npm/node_modules/.bin:/opt/devtools/venv/bin \
     DSH_AGENTS_HOME=/opt/deepseek-harness-augmented/agents \
     PLAYWRIGHT_BROWSERS_PATH=0 \
-    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    BASH_ENV=${BASH_ENV_SCRIPT}
 
 # ---------- Manifest (drives "publish only when something changed") --------
 COPY scripts/write-manifest.sh /usr/local/lib/deepseek-harness-augmented/write-manifest.sh
 RUN set -eux; \
     chmod 0755 /usr/local/bin/augmented-entrypoint /usr/local/lib/deepseek-harness-augmented/write-manifest.sh; \
     sh -n /usr/local/bin/augmented-entrypoint; \
+    chmod 0644 "${BASH_ENV}"; \
+    bash -n "${BASH_ENV}"; \
     case "${VARIANT}" in \
       default) base="${BASE_DEFAULT}" ;; bwrap) base="${BASE_BWRAP}" ;; ungoogled) base="${BASE_UNGOOGLED}" ;; \
     esac; \

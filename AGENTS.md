@@ -23,7 +23,9 @@ kernels without Landlock; runzhliu/deepseek-harness-docker#35) and `ungoogled`
    (enabled: Download/Show files/Edit instead of the dead "open locally"
    buttons), `dshmarket` and `dsh-plugin-subscriptions` (installed, disabled);
 4. a **model-facing `agents/AGENTS.md`**, wired through `DSH_AGENTS_HOME`, which
-   tells the agent what it runs in and which tools it has.
+   tells the agent what it runs in and which tools it has;
+5. a **`BASH_ENV` script** that gives the agent's shell a persistent
+   per-project `TMPDIR` (`<project>/.tmp`).
 
 Everything is pinned, and Renovate keeps every pin current. CI builds the 3
 variants for amd64 and arm64 on native runners, smoke-tests each, and
@@ -40,12 +42,13 @@ short; do not put repository instructions there.
 
 | Path | Purpose |
 | --- | --- |
-| `Dockerfile` | The image (all variants). Base pins and contract assertions, Lax patch, tools, seed profile, entrypoint, `DSH_AGENTS_HOME`, manifest. Every pin carries a `# renovate:` comment. |
+| `Dockerfile` | The image (all variants). Base pins and contract assertions, Lax patch, tools, seed profile, entrypoint, `DSH_AGENTS_HOME`, `BASH_ENV`, manifest. Every pin carries a `# renovate:` comment. |
 | `agents/AGENTS.md` | Model-facing instructions baked at `$DSH_AGENTS_HOME`. Its `<!-- commands -->` table is smoke-tested. |
 | `tools/dsh-plugins/package.json` | dsh plugins of the seed profile (exact pins) and which start enabled (`dshPlugins.enabled`). Not an npm project. |
 | `tools/npm/package.json` + `package-lock.json` | npm CLIs (exact versions) and the `allowScripts` install-script policy. |
 | `tools/python/requirements.txt` | Python libraries (exact `==` pins, wheels only). |
 | `scripts/install-dsh-plugins.mjs` | Build-time: installs the plugins with `dsh plugin --profile web add`, grants exemptions to incompatible *disabled* plugins, deselects disabled ones, pins the pnpm store. |
+| `scripts/augmented-bash-env` | Runtime: baked at `/opt/deepseek-harness-augmented/augmented-bash-env` and named by `BASH_ENV`, so every agent `bash -c` gets `TMPDIR=<project>/.tmp`. Must never fail or print; its header lists the rules, README the why. |
 | `scripts/augmented-entrypoint` | Runtime: seeds a Harness home that has no `web` profile, never edits an existing one, then execs upstream's entrypoint. |
 | `scripts/refresh-checksums.py` | Recomputes per-arch sha256 ARGs for release binaries and cross-checks them against upstream-published checksums. |
 | `scripts/static-check.sh [--online]` | All checks that need no Docker daemon. **Run it before every push.** |
@@ -64,10 +67,13 @@ short; do not put repository instructions there.
 
 ## Invariants: never break these
 
-- **Stay close to upstream.** Add only the four things above. Do not change
+- **Stay close to upstream.** Add only the five things above. Do not change
   upstream's entrypoint behaviour, CMD (restated verbatim because our
   `ENTRYPOINT` resets it; smoke-tested), users, ports or ENV beyond `PATH`
-  (appended), `DSH_AGENTS_HOME` and the Playwright download switches.
+  (appended), `DSH_AGENTS_HOME`, the Playwright download switches and
+  `BASH_ENV`. `BASH_ENV` is a deliberate, maintainer-approved exception: the
+  per-project `TMPDIR` must be computed inside the sandbox on every tool call
+  (see `scripts/augmented-bash-env`). Do not add a static `TMPDIR` instead.
 - **Bases = upstream `default`, `-bwrap.N` and `-ungoogled.N` of one release,
   each pinned by tag and digest.** Never `-market.*`, never `latest`, never
   variants of different upstream releases (static-check enforces it).

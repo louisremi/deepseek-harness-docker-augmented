@@ -7,3 +7,4 @@
 !scripts/write-manifest.sh
 !scripts/install-dsh-plugins.mjs
 !scripts/augmented-entrypoint
+!scripts/augmented-bash-env

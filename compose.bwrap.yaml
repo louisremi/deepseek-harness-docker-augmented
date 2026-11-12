@@ -17,3 +17,5 @@ services:
       # docker-default forbids the mount calls bwrap makes. On Ubuntu 23.10+ also
       # set the host sysctl kernel.apparmor_restrict_unprivileged_userns=0.
       - apparmor=unconfined
+    # bwrap gives every tool call a fresh /tmp; the image's BASH_ENV handles
+    # scratch files. Do not set TMPDIR here (README: "Scratch files and /tmp").
