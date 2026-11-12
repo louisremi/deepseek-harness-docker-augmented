@@ -54,10 +54,19 @@ bash_env() {
     && grep -qF 'bash -n "${BASH_ENV}"' Dockerfile \
     && ! grep -Eq '^[^#]*TMPDIR' compose.yaml compose.bwrap.yaml
 }
+copy_sources_in_context() {
+  # .dockerignore is an allow-list: a COPY source missing from it fails every build.
+  local src rc=0
+  while read -r src; do
+    grep -qxF "!${src}" .dockerignore || { echo "  COPY source ${src} is not allowed in .dockerignore" >&2; rc=1; }
+  done < <(awk '/^COPY / { for (i = 2; i < NF; i++) if ($i !~ /^--/) print $i }' Dockerfile)
+  return "${rc}"
+}
 check "bubblewrap contract assertion (bwrap variant) + sandbox-chain guard present, no local install, no setuid" bwrap_contract
 check "SameSite=Lax patch + guard present" lax_patch
 check "model-facing AGENTS.md wired through DSH_AGENTS_HOME (with guard)" agents_home
 check "BASH_ENV script baked, wired and syntax-checked in the build; compose sets no TMPDIR" bash_env
+check "every COPY source is allowed by the .dockerignore allow-list" copy_sources_in_context
 
 step "base image pins"
 base_pins() {
