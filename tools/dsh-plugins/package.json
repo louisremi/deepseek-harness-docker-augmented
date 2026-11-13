@@ -6,7 +6,7 @@
   "dependencies": {
     "@louisremi/dsh-always-on": "0.4.0",
     "@xbzbing/dsh-git-panel": "1.13.2",
-    "dsh-plugin-subscriptions": "0.9.12",
+    "dsh-plugin-subscriptions": "0.9.13",
     "dshmarket": "1.73.17"
   },
   "dshPlugins": {
