@@ -43,6 +43,11 @@ npm install-scripts ls        # lists packages with install scripts lacking a de
 
 Exact pins, installed at build time by `scripts/install-dsh-plugins.mjs`
 through `dsh plugin --profile web add`. No lockfile: do not run npm there.
+A plugin that is not on npm (`@momojie-s/dsh-workspace-mcp`) is pinned as
+`github:<owner>/<repo>#<40-hex commit>`: bump it to a newer commit of the
+default branch, and the guard reads that commit's `package.json` peers.
+A git-pinned plugin cannot get a version exemption, so a peer range that
+excludes the base dsh fails the build: hold it back and say so.
 
 - `PLUGIN GUARD: … is enabled by default but incompatible with dsh …`: the new
   plugin version narrowed its DSH peer ranges. Hold it back to the last

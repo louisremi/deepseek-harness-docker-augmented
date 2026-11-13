@@ -14,6 +14,10 @@
 // 3. Install everything with dsh's own `dsh plugin --profile web add`.
 // 4. Deselect the plugins that start disabled (they stay installed).
 // 5. Assert the result.
+//
+// A plugin is pinned by an exact version, or, when it is not published to npm,
+// by `github:<owner>/<repo>#<40-hex commit>` (pnpm builds it on install via its
+// `prepare` script). The package name is the dependency key either way.
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync, existsSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -37,13 +41,18 @@ if (!home) throw new Error('DSH_HOME must be set')
 const profile = join(home, 'profiles', 'web')
 const store = join(home, 'pnpm-store')
 
+const gitPin = /^github:([\w.-]+\/[\w.-]+)#([0-9a-f]{40})$/
+const isPinned = (spec) => semver.valid(spec) !== null || gitPin.test(spec)
+// What `dsh plugin add` takes: name@version, or the git spec itself.
+const addSpec = (name, spec) => gitPin.test(spec) ? spec : `${name}@${spec}`
+
 const fail = (message) => { console.error(`PLUGIN GUARD: ${message}`); process.exit(1) }
 const dsh = (...args) => execFileSync('dsh', args, { stdio: ['ignore', 'inherit', 'inherit'] })
 const runtime = execFileSync('dsh', ['--version'], { encoding: 'utf8' }).trim()
 
 if (plugins.length === 0) fail('no plugins listed')
 for (const name of enabled) if (!list.dependencies[name]) fail(`enabled plugin ${name} is not listed in dependencies`)
-for (const [name, version] of plugins) if (!semver.valid(version)) fail(`${name}: '${version}' is not an exact version`)
+for (const [name, version] of plugins) if (!isPinned(version)) fail(`${name}: '${version}' is not an exact version or a github:<owner>/<repo>#<commit sha> pin`)
 
 // 1. Initialize the profile (any harmless pnpm command does), then pin the store.
 dsh('plugin', '--profile', 'web', 'config', 'get', 'store-dir')
@@ -55,21 +64,26 @@ appendFileSync(workspace, `# Pinned by deepseek-harness-augmented: the store liv
 // 2. Compatibility, as dsh's own admission check computes it.
 const exemptions = []
 for (const [name, version] of plugins) {
-  const peers = JSON.parse(execFileSync('npm', ['view', `${name}@${version}`, 'peerDependencies', '--json'],
-    { encoding: 'utf8', cwd: profile }) || '{}') ?? {}
+  const git = gitPin.exec(version)
+  const peers = git
+    // Not on npm: read the manifest of the pinned commit.
+    ? (await (await fetch(`https://raw.githubusercontent.com/${git[1]}/${git[2]}/package.json`)).json()).peerDependencies ?? {}
+    : JSON.parse(execFileSync('npm', ['view', `${name}@${version}`, 'peerDependencies', '--json'],
+        { encoding: 'utf8', cwd: profile }) || '{}') ?? {}
   const bad = Object.entries(peers).filter(([peer, range]) =>
     (peer === '@deepseek-ai/dsh' || peer.startsWith('@deepseek-ai/dsh-'))
     && (range.trim() === '' || !semver.satisfies(runtime, range, { includePrerelease: true })))
   if (bad.length === 0) continue
   const detail = bad.map(([peer, range]) => `${peer}@"${range}"`).join(', ')
   if (enabled.has(name)) fail(`${name}@${version} is enabled by default but incompatible with dsh ${runtime}: ${detail}`)
+  if (git) fail(`${name}@${version} declares DSH peers that exclude ${runtime} (${detail}); a git-pinned plugin cannot get an exact-version exemption, so hold it back or widen the range upstream`)
   console.log(`PLUGIN NOTICE: ${name}@${version} declares DSH peers that exclude ${runtime} (${detail}); it ships disabled with an exact-version exemption`)
   dsh('plugin', '--profile', 'web', 'allow-version', `${name}@${version}`, '--dsh-version', runtime, '--accept-risk')
   exemptions.push(`${name}@${version}`)
 }
 
 // 3. Install.
-dsh('plugin', '--profile', 'web', 'add', ...plugins.map(([name, version]) => `${name}@${version}`))
+dsh('plugin', '--profile', 'web', 'add', ...plugins.map(([name, version]) => addSpec(name, version)))
 
 // 4. Deselect the disabled ones; keep every other bundle in its order.
 const manifestPath = join(profile, 'package.json')
@@ -104,7 +118,7 @@ const after = JSON.parse(readFileSync(manifestPath, 'utf8'))
 for (const [name, version] of plugins) {
   if (after.dependencies?.[name] !== version) fail(`${manifestPath} does not pin ${name}@${version}`)
   const installed = JSON.parse(readFileSync(join(profile, 'node_modules', name, 'package.json'), 'utf8'))
-  if (installed.version !== version) fail(`${name}: installed ${installed.version}, expected ${version}`)
+  if (!gitPin.test(version) && installed.version !== version) fail(`${name}: installed ${installed.version}, expected ${version}`)
   if (!installed.dsh?.bundle?.patch) fail(`${name} is not a dsh bundle`)
   if (after.dsh.profile.bundles.includes(name) !== enabled.has(name)) fail(`${name} selection is not ${enabled.has(name) ? 'enabled' : 'disabled'}`)
 }

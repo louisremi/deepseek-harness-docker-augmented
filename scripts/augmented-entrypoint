@@ -45,7 +45,7 @@ else
     }
     for (const [name, version] of Object.entries(list.dependencies || {})) {
       if (have[name]) continue
-      console.error("augmented: this image bundles " + name + "@" + version + " (" + (enabled.has(name) ? "enabled" : "disabled") + " by default) but your existing web profile does not have it; to add it: dsh plugin --profile web add " + name + "@" + version)
+      console.error("augmented: this image bundles " + name + "@" + version + " (" + (enabled.has(name) ? "enabled" : "disabled") + " by default) but your existing web profile does not have it; to add it: dsh plugin --profile web add " + (version.startsWith("github:") ? version : name + "@" + version))
     }
   ' "${plugins}" "${profile}/package.json" || true
 fi

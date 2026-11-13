@@ -264,8 +264,8 @@ errors = []
 if not deps:
     errors.append("no plugins listed")
 for name, spec in deps.items():
-    if not re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?", spec):
-        errors.append(f"{name}: '{spec}' is not an exact version")
+    if not re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?|github:[\w.-]+/[\w.-]+#[0-9a-f]{40}", spec):
+        errors.append(f"{name}: '{spec}' is not an exact version or a github:<owner>/<repo>#<commit sha> pin")
 for name in enabled:
     if name not in deps:
         errors.append(f"enabled plugin {name} is not in dependencies")
