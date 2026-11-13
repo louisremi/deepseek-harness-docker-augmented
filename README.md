@@ -38,6 +38,7 @@ unpatched image.
 | [dshmarket](https://github.com/dsh-market/dsh-market) | off | Community plugin market. Seeded with `allowRestart: false`, because the container owns the lifecycle: restart the container instead. |
 | [dsh-plugin-subscriptions](https://github.com/V1ki/dsh-plugin-subscriptions) | off | Use ChatGPT (Codex), Claude, Grok, Copilot and Antigravity subscriptions as model providers. |
 | [@xbzbing/dsh-git-panel](https://github.com/xbzbing/dsh-git-panel) | off | IDE-style **Git** panel: branch and history graph, commit / amend / stage / discard, stash, tags and syntax-highlighted diffs, plus a branch marker in the input bar. It reads **and writes** the workspace repository, and its "AI suggest" button sends the diff to your configured model provider. |
+| [@momojie-s/dsh-workspace-mcp](https://github.com/Momojie-S/dsh-workspace-mcp) | off | Loads **MCP servers per workspace**. A project's own `.dsh/mcp.servers.yml` (stdio or streamable-http servers, same fields as dsh's official MCP client) applies only to sessions whose working directory is that project; the tools are registered for the agent and removed with it, so projects never see each other's servers. It reconnects dropped servers automatically and reloads when the file changes. A project without the file loads nothing. **It starts the commands that file names**, so only enable it for projects you trust. |
 
 Turn the "off" plugins on from the sidebar's **Plugins** page. They are
 already installed, so this needs no network. A plugin that ships off may
@@ -51,6 +52,24 @@ dsh-git-panel is the one bundled plugin with a **Web client half**: its bundle
 manifest is fixed when `dsh web` starts, so if the Git tab does not appear
 after you enable it, restart the container (`docker compose restart`) and
 refresh the page. Its peers match the bundled dsh, so no exemption is needed.
+
+dsh-workspace-mcp is not published to npm and has no releases, so it is pinned
+to a Git commit (`github:Momojie-S/dsh-workspace-mcp#<sha>`) and built while
+the image is built. Example `.dsh/mcp.servers.yml` in a project:
+
+```yaml
+servers:
+  my-server:
+    transport: stdio
+    command: npx
+    args: ["-y", "some-mcp-server@latest"]
+  remote:
+    transport: streamable-http
+    url: https://example.com/mcp
+```
+
+Its tools appear as `mcp__<server>__<tool>`; a project server with the same
+name as a global one shadows it for that project only.
 
 Seeding happens at start-up: a Harness home (`/home/node/.dsh`, named volume
 or bind mount) **without** a `web` profile gets a copy of the image's profile

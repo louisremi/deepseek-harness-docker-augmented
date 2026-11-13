@@ -1,10 +1,11 @@
 {
   "name": "deepseek-harness-augmented-dsh-plugins",
   "private": true,
-  "description": "dsh plugins pre-installed in the image's seed `web` profile (scripts/install-dsh-plugins.mjs). Exact pins, bumped by Renovate. `dshPlugins.enabled` lists the ones selected by default; the others are installed but switched off (enable them from the Plugins page). Not installed with npm: the dependencies block only exists so Renovate can track the pins.",
+  "description": "dsh plugins pre-installed in the image's seed `web` profile (scripts/install-dsh-plugins.mjs). Exact pins (a plugin that is not on npm is pinned to a github:<owner>/<repo>#<commit sha>), bumped by Renovate where it can. `dshPlugins.enabled` lists the ones selected by default; the others are installed but switched off (enable them from the Plugins page). Not installed with npm: the dependencies block only exists so Renovate can track the pins.",
   "license": "MIT",
   "dependencies": {
     "@louisremi/dsh-always-on": "0.4.0",
+    "@momojie-s/dsh-workspace-mcp": "github:Momojie-S/dsh-workspace-mcp#7cce6dab7096019b7eccc59b9f3d3661807f7ce4",
     "@xbzbing/dsh-git-panel": "1.13.2",
     "dsh-plugin-subscriptions": "0.9.13",
     "dshmarket": "1.73.17"

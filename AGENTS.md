@@ -21,7 +21,9 @@ kernels without Landlock; runzhliu/deepseek-harness-docker#35) and `ungoogled`
    fzf, atuin), npm CLIs, a Python library venv;
 3. **dsh plugins** in a seed `web` profile: `@louisremi/dsh-always-on`
    (enabled: Download/Show files/Edit instead of the dead "open locally"
-   buttons), `dshmarket` and `dsh-plugin-subscriptions` (installed, disabled);
+   buttons), `dshmarket`, `dsh-plugin-subscriptions`, `@xbzbing/dsh-git-panel`
+   and `@momojie-s/dsh-workspace-mcp` (installed, disabled; the last one is not
+   on npm, so it is pinned to a `github:` commit);
 4. a **model-facing `agents/AGENTS.md`**, wired through `DSH_AGENTS_HOME`, which
    tells the agent what it runs in and which tools it has;
 5. a **`BASH_ENV` script** that gives the agent's shell a persistent
@@ -61,7 +63,7 @@ short; do not put repository instructions there.
 | `.github/release.yml` | Categories for generated release notes. |
 | `renovate.json5`, `.github/renovate-global.json5` | Update detection. |
 | `SETUP.md` | One-time repository setup: secrets, Renovate GitHub App, branch protection, environments. |
-| `.github/workflows/` | `ci.yml` (review gate, build matrix, `images` aggregate, publish, release), `renovate.yml`, `failure-to-issue.yml` (the last two call maintainer-agent's reusable workflows). |
+| `.github/workflows/` | `ci.yml` (review gate, build matrix, `images` aggregate, publish, release), `renovate.yml`. CI failures are turned into `agent-fix` issues by the maintainer-agent server, not by a workflow. |
 | `.github/maintainer-agent.yml` | How [maintainer-agent](https://github.com/louisremi/maintainer-agent) behaves here: playbooks, checks, allowed hosts, bot branches. |
 | `docs/agent/` | Playbooks for the issue agent. |
 
