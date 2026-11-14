@@ -6,7 +6,7 @@
   "dependencies": {
     "@louisremi/dsh-always-on": "0.4.0",
     "@momojie-s/dsh-workspace-mcp": "github:Momojie-S/dsh-workspace-mcp#7cce6dab7096019b7eccc59b9f3d3661807f7ce4",
-    "@xbzbing/dsh-git-panel": "1.14.0",
+    "@xbzbing/dsh-git-panel": "1.14.1",
     "dsh-plugin-subscriptions": "0.9.13",
     "dshmarket": "1.73.19"
   },
