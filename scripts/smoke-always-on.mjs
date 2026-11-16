@@ -11,7 +11,8 @@
 // $DSH_HOME (or $SMOKE_DIR; never /tmp: workspace-write deliberately grants
 // temp areas). Checks for routes a plugin version does not ship yet are
 // skipped by feature detection (save.file: all versions; create/rename/delete
-// file: >= 0.4.0; folders, trash, restore, zip: >= 0.5.0). Prints one line
+// file: >= 0.4.0; folders, trash, restore, zip: >= 0.5.0; upload: >= 0.6.0).
+// Prints one line
 // per check; exits non-zero on the first failure.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -43,6 +44,7 @@ const { handleSave } = await loadPlugin('save-route.js');
 const { handleCreateFile, handleCreateFolder } = await loadPlugin('create-route.js');
 const routes = await loadPlugin('entry-route.js');
 const folders = await loadPlugin('folder-route.js');
+const { handleUpload } = await loadPlugin('upload-route.js');
 const { Context } = await load(join(dshModules, 'cordis/lib/index.js'));
 const { SandboxedFileSystem } = await load(join(dshModules, 'dsh-fs-sandbox/lib/index.js'));
 const { WorkspaceFiles } = await load(join(dshModules, 'dsh-api-workspace-files/lib/index.js'));
@@ -248,6 +250,38 @@ try {
     for (const name of ['z/héllo.txt', 'z/inner/big.bin', 'z/DOWNLOAD-SKIPPED.txt']) assert.ok(listing.includes(name), `${name} in ${listing}`);
     assert.ok(!listing.includes('z/leak'), 'the symlink is left out');
     assert.equal(execFileSync('unzip', ['-p', zip, 'z/héllo.txt'], { encoding: 'utf8' }), 'ünïcode');
+  });
+
+  await checkIf([handleUpload], 'Upload a file: exact bytes, never replaces, refused outside or read-only, no temporary file left', async () => {
+    const dir = join(workspace, 'up');
+    mkdirSync(dir);
+    const bytes = Buffer.from(Array.from({ length: 1000 }, (_, i) => i % 251));
+    const upload = async (mode, query, body) => {
+      const res = await handleUpload(
+        host(mode),
+        new Request(`http://x/api/upload.file?${new URLSearchParams({ sessionId: 's', ...query })}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/octet-stream', 'content-length': String(body.length) },
+          body,
+        }),
+      );
+      return res.status;
+    };
+    assert.equal(await upload(W, { directory: dir, name: 'up.bin' }, bytes), 201);
+    assert.deepEqual(readFileSync(join(dir, 'up.bin')), bytes);
+    writeFileSync(join(dir, 'taken.txt'), 'mine');
+    assert.equal(await upload(W, { directory: dir, name: 'taken.txt' }, Buffer.from('x')), 409);
+    assert.equal(readFileSync(join(dir, 'taken.txt'), 'utf8'), 'mine');
+    assert.equal(await upload('read-only', { directory: dir, name: 'ro.bin' }, bytes), 403);
+    assert.equal(await upload(W, { directory: outside, name: 'out.bin' }, bytes), 403);
+    // A folder swapped for a link to the outside: refused, not followed.
+    const escapeDir = join(workspace, 'escape-dir');
+    if (!existsSync(escapeDir)) symlinkSync(outside, escapeDir);
+    assert.equal(await upload(W, { directory: escapeDir, name: 'e.bin' }, bytes), 403);
+    // A file where the folder would be is not a folder, and nothing is written through it.
+    assert.equal(await upload(W, { directory: join(workspace, 'escape.txt'), name: 'e.bin' }, bytes), 404);
+    // The hidden temporary file goes whatever happens: only what was asked for is there.
+    assert.deepEqual(readdirSync(dir).sort(), ['taken.txt', 'up.bin']);
   });
 
   if (skipped > 0) console.log(`note dsh-always-on@${version}: ${skipped} check(s) skipped, the pinned version predates them`);
