@@ -85,8 +85,9 @@ Prefer these to writing ad-hoc scripts. Check versions with `--version`.
 ## Sharing files with the user
 
 The `@louisremi/dsh-always-on` plugin adds **Download** buttons to file cards,
-a **Show files** button, an in-browser **Edit** button, and Rename / Delete /
-Download as .zip in the Files tree's right-click menu. Deletes go to
+a **Show files** button, an in-browser **Edit** button, **Upload files** in the
+Files tab, and Rename / Delete / Download as .zip in the Files tree's
+right-click menu. Deletes go to
 `<workspace>/.tmp/deleted/` (kept 30 days). To hand the user
 a file, write it under `/workspace` and present it (file card), so they can
 download it. Do not tell them to "open" a path on their computer.

@@ -315,7 +315,9 @@ pass "fresh volume seeded; dsh-always-on loaded (/api/download.file: 401 unauthe
 # request reaches the handler (400 for an empty body). A route this plugin
 # version does not have answers 401 unauthenticated too, so only the
 # authenticated probe proves the route exists; routes added by newer versions
-# are probed when the pinned version is new enough to ship them.
+# are probed when the pinned version is new enough to ship them (0.4.0: create,
+# rename and delete a file; 0.5.0: folders, restore, zip; 0.6.0: upload, which
+# streams a raw body and so is probed with octet-stream).
 always_on_version="$(plugin_version @louisremi/dsh-always-on)"
 at_least() { [[ "$(printf '%s\n' "$1" "${always_on_version}" | sort -V | head -n1)" == "$1" ]]; }
 always_on_routes=(save.file)
@@ -326,6 +328,10 @@ fi
 if at_least 0.5.0; then
   always_on_routes+=(rename.folder delete.folder restore.entry)
   always_on_reads+=(folder.summary download.folder)
+fi
+always_on_uploads=()
+if at_least 0.6.0; then
+  always_on_uploads+=(upload.file)
 fi
 api() {  # api <path> [curl args...]; prints the status code
   local path="$1"; shift
@@ -351,7 +357,19 @@ for route in "${always_on_reads[@]}"; do
   code="$(api "${route}" --cookie "${cookie_jar}")"
   [[ "${code}" == 400 ]] || fail "authenticated GET /api/${route} without a path returned ${code}, expected 400 (route missing?)"
 done
-pass "dsh-always-on@${always_on_version} routes: 401 unauthenticated, 403 cross-site/foreign Origin (POST ${always_on_routes[*]}; GET ${always_on_reads[*]})"
+# upload.file takes a raw body, so it is probed with octet-stream rather than JSON.
+for route in "${always_on_uploads[@]}"; do
+  upload=(--request POST --header 'content-type: application/octet-stream' --data '')
+  code="$(api "${route}" "${upload[@]}")"
+  [[ "${code}" == 401 ]] || fail "unauthenticated POST /api/${route} returned ${code}, expected 401"
+  code="$(api "${route}" "${upload[@]}" --cookie "${cookie_jar}" --header 'Sec-Fetch-Site: cross-site')"
+  [[ "${code}" == 403 ]] || fail "cross-site POST /api/${route} returned ${code}, expected 403"
+  code="$(api "${route}" "${upload[@]}" --cookie "${cookie_jar}" --header 'Origin: https://evil.example')"
+  [[ "${code}" == 403 ]] || fail "foreign-Origin POST /api/${route} returned ${code}, expected 403"
+  code="$(api "${route}" "${upload[@]}" --cookie "${cookie_jar}")"
+  [[ "${code}" == 400 ]] || fail "authenticated POST /api/${route} returned ${code}, expected 400 (route missing?)"
+done
+pass "dsh-always-on@${always_on_version} routes: 401 unauthenticated, 403 cross-site/foreign Origin (POST ${always_on_routes[*]}${always_on_uploads[*]:+; upload ${always_on_uploads[*]}}; GET ${always_on_reads[*]})"
 
 # Its file operations, run on the image's own Harness filesystem stack, GNU mv
 # and unzip: save, create, rename and delete (to the trash, then restore) for
