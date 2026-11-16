@@ -358,6 +358,7 @@ fi
 check "augmented-bash-env parses (bash -n)" bash -n scripts/augmented-bash-env
 check "refresh-checksums.py compiles" python3 -m py_compile scripts/refresh-checksums.py
 check "install-dsh-plugins.mjs parses" node --check scripts/install-dsh-plugins.mjs
+check "smoke-always-on.mjs parses" node --check scripts/smoke-always-on.mjs
 
 if (( online )); then
   step "npm registry resolution"
