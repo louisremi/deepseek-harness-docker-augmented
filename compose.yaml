@@ -21,6 +21,14 @@ services:
       DSH_WEB_RELAY_INTERFACE: ${DSH_WEB_RELAY_INTERFACE:-}
       DSH_DESKTOP_PUBLIC_PORT: ${DSH_DESKTOP_PORT:-6080}
       HOME: /workspace
+      # Optional sign-in through an OpenID Connect provider (README: "Optional:
+      # sign in with Authelia"; compose.authelia.yaml sets these). Empty = the
+      # launch-token link only, as upstream.
+      DSH_OIDC_ISSUER: ${DSH_OIDC_ISSUER:-}
+      DSH_OIDC_CLIENT_ID: ${DSH_OIDC_CLIENT_ID:-}
+      DSH_OIDC_CLIENT_SECRET_FILE: ${DSH_OIDC_CLIENT_SECRET_FILE:-}
+      DSH_OIDC_PUBLIC_URL: ${DSH_OIDC_PUBLIC_URL:-}
+      DSH_OIDC_ALLOWED_EMAILS: ${DSH_OIDC_ALLOWED_EMAILS:-}
     volumes:
       # The image seeds a Harness home without a `web` profile with its
       # pre-installed dsh plugins (named volume or bind mount alike).

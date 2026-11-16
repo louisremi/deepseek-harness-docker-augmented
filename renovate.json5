@@ -31,12 +31,17 @@
   minimumReleaseAge: '2 days',
   internalChecksFilter: 'strict',
 
-  enabledManagers: ['custom.regex', 'npm', 'pip_requirements', 'github-actions'],
+  enabledManagers: ['custom.regex', 'npm', 'pip_requirements', 'github-actions', 'docker-compose'],
 
   // tools/dsh-plugins/package.json is a pin list read by the Dockerfile, not
   // an npm project: no lockfile, and every dependency is a dsh plugin.
   npm: {
     managerFilePatterns: ['/(^|/)tools/npm/package\\.json$/', '/(^|/)tools/dsh-plugins/package\\.json$/'],
+  },
+
+  // Only the Authelia overlay: compose.yaml's own image is our moving tag.
+  'docker-compose': {
+    managerFilePatterns: ['/(^|/)compose\\.authelia\\.yaml$/'],
   },
 
   customManagers: [
@@ -55,6 +60,16 @@
   ],
 
   packageRules: [
+    {
+      description: 'Authelia (compose.authelia.yaml, example deployment): stable releases, tag + digest',
+      matchManagers: ['docker-compose'],
+      matchPackageNames: ['authelia/authelia', 'docker.io/authelia/authelia'],
+      pinDigests: true,
+      commitMessageTopic: 'Authelia image',
+      prBodyNotes: [
+        'Authelia is not in the image: it is the example sign-in deployment of compose.authelia.yaml. static-check validates the overlay; check the Authelia release notes for configuration changes against config/authelia/configuration.yml.',
+      ],
+    },
     {
       description: 'Upstream DSH images: one PR for all three variant pins (same upstream release), every revision incl. alpha/rc, pinned by digest, no delay',
       matchDatasources: ['docker'],

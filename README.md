@@ -38,6 +38,7 @@ unpatched image.
 | [dshmarket](https://github.com/dsh-market/dsh-market) | off | Community plugin market. Seeded with `allowRestart: false`, because the container owns the lifecycle: restart the container instead. |
 | [dsh-plugin-subscriptions](https://github.com/V1ki/dsh-plugin-subscriptions) | off | Use ChatGPT (Codex), Claude, Grok, Copilot and Antigravity subscriptions as model providers. |
 | [@xbzbing/dsh-git-panel](https://github.com/xbzbing/dsh-git-panel) | off | IDE-style **Git** panel: branch and history graph, commit / amend / stage / discard, stash, tags and syntax-highlighted diffs, plus a branch marker in the input bar. It reads **and writes** the workspace repository, and its "AI suggest" button sends the diff to your configured model provider. |
+| [@louisremi/dsh-oidc-login](https://github.com/louisremi/dsh-oidc-login) | **on** (inert until configured) | Sign in with an OpenID Connect provider (e.g. a self-hosted Authelia: email + password + a second factor) instead of the launch-token link. Does nothing until `DSH_OIDC_ISSUER` is set; the token link always keeps working. See [Optional: sign in with Authelia](#optional-sign-in-with-authelia). |
 | [@momojie-s/dsh-workspace-mcp](https://github.com/Momojie-S/dsh-workspace-mcp) | off | Loads **MCP servers per workspace**. A project's own `.dsh/mcp.servers.yml` (stdio or streamable-http servers, same fields as dsh's official MCP client) applies only to sessions whose working directory is that project; the tools are registered for the agent and removed with it, so projects never see each other's servers. It reconnects dropped servers automatically and reloads when the file changes. A project without the file loads nothing. **It starts the commands that file names**, so only enable it for projects you trust. |
 
 Turn the "off" plugins on from the sidebar's **Plugins** page. They are
@@ -171,6 +172,74 @@ capabilities stay dropped. On Ubuntu 23.10+ also set the host sysctl
 `kernel.apparmor_restrict_unprivileged_userns=0`. History: we reported the
 missing-Landlock case as runzhliu/deepseek-harness-docker#35, and upstream has
 published the `-bwrap.N` variant since `0.2.1-alpha.1-r1`.
+
+## Optional: sign in with Authelia
+
+By default you open dsh with the `?token=` link printed in the container logs.
+To sign in with **email + password + a second factor** instead (from any
+device, including the installed PWA), run a self-hosted
+[Authelia](https://www.authelia.com) next to dsh. The bundled
+[dsh-oidc-login](https://github.com/louisremi/dsh-oidc-login) plugin
+redirects your browser to Authelia and, once Authelia vouches for you, hands
+the browser **dsh's own session cookie**, the same one the token link gives.
+Nothing in dsh is patched, and the token link keeps working (use it if
+Authelia is down).
+
+**Only you can create the account.** Authelia has no sign-up page: the single
+owner is written to a file on the server by a setup script, so even an
+instance exposed to the internet from its first second cannot be claimed by
+someone else.
+
+```bash
+scripts/authelia-setup.sh ./authelia      # secrets + the owner (prompts for e-mail and password)
+cp .env.authelia.example .env             # then edit the URLs, owner and e-mail
+docker compose -f compose.yaml -f compose.authelia.yaml up -d
+```
+
+1. Publish Authelia (port 9091, loopback-only in the overlay) over **HTTPS**
+   with the same reverse proxy as dsh, at `DSH_AUTH_PUBLIC_URL`. The dsh
+   container must reach that URL too: it fetches Authelia's OIDC discovery,
+   tokens and signing keys from it.
+2. Open dsh: you land on Authelia's sign-in page. Log in with your e-mail and
+   password, then register a second factor (a passkey or an authenticator
+   app). Authelia "e-mails" the one-time code that confirms this to
+   `./authelia/data/notification.txt` on the server, so only someone with
+   shell access to the host can complete it. Register a backup factor too.
+3. From then on: e-mail, password, second factor, and you are in dsh.
+   `/auth/logout` signs you out.
+
+What protects the login ([config/authelia/configuration.yml](config/authelia/configuration.yml)):
+
+| Measure | Setting |
+| --- | --- |
+| Second factor required for dsh | OIDC policy `two_factor` for the owner only; every other user is denied |
+| Brute force | 5 failed logins in 10 min ban **both** the IP and the account for 12 h (`regulation`) |
+| Rate limits | Authelia's per-endpoint limits on TOTP, password reset, re-authentication and OIDC token/userinfo, written out explicitly |
+| Passwords | argon2id; changes and resets need a zxcvbn score of 4 (the setup script requires 16+ characters) |
+| Sessions | Authelia session 1 h, 15 min inactivity, no "remember me"; dsh's own cookie lasts 30 days |
+| OIDC | confidential client, PKCE S256 required, ID token signature and claims verified by the plugin, then a second check: the e-mail must be in `DSH_OIDC_ALLOWED_EMAILS` |
+| Secrets | generated by Authelia's own `crypto` commands, stored as `0600` files and passed as Docker secrets; the plugin removes `DSH_OIDC_CLIENT_SECRET` from dsh's environment so agent tool calls never inherit it |
+
+Operations:
+
+```bash
+# lift a ban early
+docker compose exec authelia authelia storage bans user list
+docker compose exec authelia authelia storage bans user revoke <username>
+docker compose exec authelia authelia storage bans ip revoke <address>
+# change the password or the owner: rewrite users.yml, then restart Authelia
+scripts/authelia-setup.sh --reset-user ./authelia && docker compose restart authelia
+# rotate every secret (signs everyone out)
+scripts/authelia-setup.sh --rotate-secrets ./authelia && docker compose up -d --force-recreate
+```
+
+Limits: dsh has no server-side session store, so logout clears the cookie of
+the current browser only. To revoke every dsh session at once, delete the
+`client-connection/browser-session` entry from `/home/node/.dsh/.credentials.yaml`
+and restart the container. The noVNC port 6080 has no authentication of its
+own: never publish it. An existing `web` profile (created by an earlier image)
+does not get the plugin automatically; the container logs print the
+`dsh plugin --profile web add @louisremi/dsh-oidc-login@<version>` command.
 
 ## How it stays up to date
 
