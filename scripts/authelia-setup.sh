@@ -36,6 +36,15 @@ umask 077
 mkdir -p "${dir}/config" "${dir}/data" "${dir}/secrets"
 dir="$(cd "${dir}" && pwd)"
 
+# Authelia's SQLite store fails its startup check on Unraid's shfs (/mnt/user):
+# keep the database on a real filesystem (compose.authelia.yaml mounts
+# DSH_AUTH_DATA_DIR separately).
+if [[ "${dir}" == /mnt/user/* ]]; then
+  echo "warning: ${dir} is on Unraid's shfs (FUSE, where Authelia's SQLite store fails its" >&2
+  echo "         startup check). Keep config/ and secrets/ here if you like, but set" >&2
+  echo "         DSH_AUTH_DATA_DIR=/mnt/cache/appdata/authelia/data in .env." >&2
+fi
+
 # The Authelia image pinned in compose.authelia.yaml (Renovate bumps it there).
 image="$(sed -n 's/^ *image: *\(docker\.io\/authelia\/authelia:[^ ]*\).*/\1/p' "${here}/compose.authelia.yaml" | head -n1)"
 authelia() {
@@ -121,6 +130,12 @@ EOF
   echo "Set in your .env (see .env.authelia.example):"
   echo "  DSH_AUTH_OWNER=${username}"
   echo "  DSH_OIDC_ALLOWED_EMAILS=${email,,}"
+fi
+
+if [[ "$(id -u)" == 0 ]]; then
+  echo
+  echo "You ran this as root; the container runs as 99:100 on Unraid. Give it the files:"
+  echo "  chown -R 99:100 ${dir}"
 fi
 
 echo

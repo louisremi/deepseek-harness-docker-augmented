@@ -26,8 +26,12 @@ services:
       DSH_AUTH_OWNER: ${DSH_AUTH_OWNER:?set DSH_AUTH_OWNER}
       DSH_OIDC_PUBLIC_URL: ${DSH_OIDC_PUBLIC_URL:?set DSH_OIDC_PUBLIC_URL}
     volumes:
-      - ${DSH_AUTH_DIR:-./authelia}/config:/config:ro
-      - ${DSH_AUTH_DIR:-./authelia}/data:/data
+      # rw, not ro: a password reset rewrites config/users.yml.
+      - ${DSH_AUTH_DIR:-./authelia}/config:/config
+      # Must be a real filesystem, not Unraid's /mnt/user (shfs/FUSE), where
+      # Authelia's SQLite store fails its startup check: use /mnt/cache/appdata
+      # on Unraid. config/ and secrets/ are fine on the shfs share.
+      - ${DSH_AUTH_DATA_DIR:-${DSH_AUTH_DIR:-./authelia}/data}:/data
     secrets:
       - authelia_session_secret
       - authelia_storage_encryption_key

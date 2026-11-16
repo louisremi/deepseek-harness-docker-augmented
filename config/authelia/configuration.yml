@@ -10,6 +10,12 @@
 
 server:
   address: 'tcp://:9091/'
+  # The image runs with a read-only root filesystem, where Authelia's startup
+  # cannot rewrite its own /app/.healthcheck.env helper; that check fails before
+  # any provider check runs and reports only "Errors occurred performing
+  # startup checks". The /api/health endpoint stays available, and
+  # compose.authelia.yaml's healthcheck queries it directly.
+  disable_healthcheck: true
   endpoints:
     # Rate limits on the sensitive endpoints. These are Authelia's defaults,
     # written out so they are visible and tunable.

@@ -200,13 +200,41 @@ docker compose -f compose.yaml -f compose.authelia.yaml up -d
    with the same reverse proxy as dsh, at `DSH_AUTH_PUBLIC_URL`. The dsh
    container must reach that URL too: it fetches Authelia's OIDC discovery,
    tokens and signing keys from it.
-2. Open dsh: you land on Authelia's sign-in page. Log in with your e-mail and
+2. If your TLS proxy is **tsdproxy**, it provisions a Tailscale node per
+   proxied service. The first start of the `auth` proxy prints a one-time
+   approval link in `docker logs tsdproxy` (`https://login.tailscale.com/a/…`):
+   open it, or the name never resolves. Note the node's address
+   (`tailscale status | grep auth`) — dsh must reach that same name from
+   inside its container, which has no MagicDNS, so add it explicitly:
+
+   ```yaml
+   extra_hosts:
+     - "auth.example.com:<auth node tailnet IP>"
+   ```
+
+   The address is stable while the node key survives (tsdproxy keeps its state
+   in `/data`); if you ever delete and re-approve the node, update it.
+3. Open dsh: you land on Authelia's sign-in page. Log in with your e-mail and
    password, then register a second factor (a passkey or an authenticator
    app). Authelia "e-mails" the one-time code that confirms this to
    `./authelia/data/notification.txt` on the server, so only someone with
    shell access to the host can complete it. Register a backup factor too.
-3. From then on: e-mail, password, second factor, and you are in dsh.
+4. From then on: e-mail, password, second factor, and you are in dsh.
    `/auth/logout` signs you out.
+
+Two filesystem gotchas, both found in a real deployment:
+
+- **Unraid:** Authelia's data directory (its SQLite store) must not live on
+  `/mnt/user` (shfs/FUSE), where its startup check fails. Mount a real path
+  there, e.g. `DSH_AUTH_DATA_DIR=/mnt/cache/appdata/authelia/data`. The
+  configuration and the secret files are fine on the shfs share.
+- **Read-only root filesystem:** the image runs Authelia with
+  `read_only: true`, where Authelia cannot rewrite its own
+  `/app/.healthcheck.env`. That aborts its startup with a detail-free
+  `Errors occurred performing startup checks`, before any provider check. The
+  shipped [configuration.yml](config/authelia/configuration.yml) therefore sets
+  `server.disable_healthcheck: true`, and the overlay's healthcheck asks
+  `/api/health` directly.
 
 What protects the login ([config/authelia/configuration.yml](config/authelia/configuration.yml)):
 
