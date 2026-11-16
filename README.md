@@ -34,7 +34,7 @@ unpatched image.
 
 | Plugin | Default | What it does |
 | --- | --- | --- |
-| [@louisremi/dsh-always-on](https://github.com/louisremi/dsh-always-on) | **on** | The Harness runs remotely, so "show file location" and "Open in app" have no desktop to reach. This plugin replaces them with **Download file**, **Show files** (sidebar explorer) and an in-browser **Edit** button. |
+| [@louisremi/dsh-always-on](https://github.com/louisremi/dsh-always-on) | **on** | The Harness runs remotely, so "show file location" and "Open in app" have no desktop to reach. This plugin replaces them with **Download file**, **Show files** (sidebar explorer) and an in-browser **Edit** button, and adds file management to the Files tree: **New file / New folder**, **Rename or move**, **Delete** (to a `.tmp/deleted/` trash, with a 10-second **Restore**) and **Download as .zip** for folders. It also tells the Harness it has no desktop, so menus stop offering "Show in folder" and "Open in <app>". |
 | [dshmarket](https://github.com/dsh-market/dsh-market) | off | Community plugin market. Seeded with `allowRestart: false`, because the container owns the lifecycle: restart the container instead. |
 | [dsh-plugin-subscriptions](https://github.com/V1ki/dsh-plugin-subscriptions) | off | Use ChatGPT (Codex), Claude, Grok, Copilot and Antigravity subscriptions as model providers. |
 | [@xbzbing/dsh-git-panel](https://github.com/xbzbing/dsh-git-panel) | off | IDE-style **Git** panel: branch and history graph, commit / amend / stage / discard, stash, tags and syntax-highlighted diffs, plus a branch marker in the input bar. It reads **and writes** the workspace repository, and its "AI suggest" button sends the diff to your configured model provider. |

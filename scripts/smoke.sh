@@ -317,9 +317,15 @@ pass "fresh volume seeded; dsh-always-on loaded (/api/download.file: 401 unauthe
 # authenticated probe proves the route exists; routes added by newer versions
 # are probed when the pinned version is new enough to ship them.
 always_on_version="$(plugin_version @louisremi/dsh-always-on)"
+at_least() { [[ "$(printf '%s\n' "$1" "${always_on_version}" | sort -V | head -n1)" == "$1" ]]; }
 always_on_routes=(save.file)
-if [[ "$(printf '%s\n' 0.4.0 "${always_on_version}" | sort -V | head -n1)" == 0.4.0 ]]; then
+always_on_reads=(download.file)
+if at_least 0.4.0; then
   always_on_routes+=(create.file create.folder rename.file delete.file)
+fi
+if at_least 0.5.0; then
+  always_on_routes+=(rename.folder delete.folder restore.entry)
+  always_on_reads+=(folder.summary download.folder)
 fi
 api() {  # api <path> [curl args...]; prints the status code
   local path="$1"; shift
@@ -336,15 +342,25 @@ for route in "${always_on_routes[@]}"; do
   code="$(api "${route}" "${post[@]}" --cookie "${cookie_jar}")"
   [[ "${code}" == 400 ]] || fail "authenticated POST /api/${route} {} returned ${code}, expected 400 (route missing?)"
 done
-code="$(api download.file --cookie "${cookie_jar}" --header 'Sec-Fetch-Site: cross-site')"
-[[ "${code}" == 403 ]] || fail "cross-site GET /api/download.file returned ${code}, expected 403"
-pass "dsh-always-on@${always_on_version} routes: 401 unauthenticated, 403 cross-site/foreign Origin (${always_on_routes[*]} download.file)"
+# GET routes: same boundary; the owner's request without ?path= is a 400.
+for route in "${always_on_reads[@]}"; do
+  code="$(api "${route}")"
+  [[ "${code}" == 401 ]] || fail "unauthenticated GET /api/${route} returned ${code}, expected 401"
+  code="$(api "${route}" --cookie "${cookie_jar}" --header 'Sec-Fetch-Site: cross-site')"
+  [[ "${code}" == 403 ]] || fail "cross-site GET /api/${route} returned ${code}, expected 403"
+  code="$(api "${route}" --cookie "${cookie_jar}")"
+  [[ "${code}" == 400 ]] || fail "authenticated GET /api/${route} without a path returned ${code}, expected 400 (route missing?)"
+done
+pass "dsh-always-on@${always_on_version} routes: 401 unauthenticated, 403 cross-site/foreign Origin (POST ${always_on_routes[*]}; GET ${always_on_reads[*]})"
 
-# Its writes on the image's own Harness filesystem stack follow the session's
-# sandbox mode: read-only and out-of-workspace saves are refused.
+# Its file operations, run on the image's own Harness filesystem stack, GNU mv
+# and unzip: save, create, rename and delete (to the trash, then restore) for
+# files and folders, and a folder .zip that unzip accepts. Each one also
+# follows the session's sandbox mode: read-only, out-of-workspace and
+# symlink-escape writes are refused. Checks newer than the pin are skipped.
 docker exec -i "${main}" node --input-type=module - <"${root}/scripts/smoke-always-on.mjs" \
-  || fail "dsh-always-on wrote where the session's sandbox mode forbids it"
-pass "dsh-always-on saves follow the session sandbox (read-only, outside workspace, symlink escape refused)"
+  || fail "dsh-always-on's file operations failed on the image's own stack, or wrote where the session's sandbox mode forbids it"
+pass "dsh-always-on file operations work on the image's stack and follow the session sandbox (see the ok lines above)"
 
 dump="$(in_container "${main}" 'dsh --profile web --dump-config --patch /opt/deepseek-harness/web.cordis.patch.yml')"
 while read -r name; do
@@ -355,6 +371,18 @@ while read -r name; do
   fi
 done < <(plugin_names)
 pass "composition: enabled plugins composed, disabled plugins not"
+# From 0.5.0, dsh-always-on's bundle patch tells the Harness it has no
+# desktop: the session controller's nativeOpen is off and the Host's
+# open-in-app catalog is disabled, so menus stop offering "Show in folder" /
+# "Open in <app>" that would open nothing a browser user can see.
+if at_least 0.5.0; then
+  rows="$(sed -n '/^# == .*patched by .*@louisremi\/dsh-always-on/,/^# == /p' <<<"${dump}")"
+  grep -A3 -- '- id: session-controller' <<<"${rows}" | grep -q 'nativeOpen: false' \
+    || fail "dsh-always-on did not turn nativeOpen off on session-controller"
+  grep -A8 -- '- id: open-in-app' <<<"${rows}" | grep -q 'disabled: true' \
+    || fail "dsh-always-on did not disable the Host open-in-app plugin"
+  pass "composition: dsh-always-on turns desktop opening off (session-controller nativeOpen: false, open-in-app disabled)"
+fi
 
 # Later `dsh plugin` operations must work against the seeded store (no
 # ERR_PNPM_UNEXPECTED_STORE) - offline, so reinstall from the lockfile.
