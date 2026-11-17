@@ -183,30 +183,43 @@ your browser to Pocket ID and, once Pocket ID vouches for you, hands the browser
 **dsh's own session cookie**, the same one the token link gives. Nothing in dsh
 is patched, and the token link keeps working (use it if Pocket ID is down).
 
-Pocket ID is passkey-only and needs **no SMTP and no one-time codes**: you
-create the single account in the browser once, with a passkey, and that setup
-page stops working as soon as the account exists. Nobody else can create one
-unless you invite them, because sign-up ships disabled here.
+Pocket ID is passkey-only and needs **no SMTP and no one-time codes**. The
+account, the OIDC client and its secret are registered through Pocket ID's own
+API, so the only manual step left is the passkey itself — which WebAuthn
+requires a human and an authenticator for.
 
 ```bash
-scripts/pocket-id-setup.sh ./pocket-id     # data dir + encryption key
-cp .env.pocket-id.example .env             # then edit the URLs and e-mail
+scripts/pocket-id-setup.sh ./pocket-id     # data dir + three generated secrets
+cp .env.pocket-id.example .env             # then edit the URLs, e-mail, uid/gid
 docker compose -f compose.yaml -f compose.pocket-id.yaml up -d
+docker compose -f compose.yaml -f compose.pocket-id.yaml run --rm pocket-id-bootstrap
 ```
 
-1. Open `https://<DSH_AUTH_PUBLIC_URL>/setup`, create your account, then click
-   **Add Passkey**. Keep a second device (or a hardware key) enrolled as a
-   backup: **there is no password and no recovery e-mail**, so losing every
-   passkey locks you out of Pocket ID (the dsh token link still gets you into
-   dsh).
-2. Administration → **OIDC Clients** → **Add OIDC Client**: type
-   *confidential*, callback URL `https://<DSH_OIDC_PUBLIC_URL>/auth/callback`.
-   Copy the client ID into `.env` as `DSH_OIDC_CLIENT_ID`, and the client
-   secret (shown once) into `./pocket-id/secrets/dsh_oidc_client_secret`.
-   Then on the client's **Access** tab pick **All Users**: a new client lets
-   nobody in until you do.
-3. `docker compose up -d deepseek-harness`, then open dsh: you land on Pocket
-   ID, tap your passkey, and you are in. `/auth/logout` signs you out.
+The bootstrap prints one link. Open it, click **Add Passkey**, and you are in
+dsh. It is idempotent: re-run it any time for a fresh link (for example after
+losing a device), and it reuses the existing account, client and secret. It
+creates:
+
+- the owner account from `DSH_AUTH_OWNER` / `DSH_OIDC_ALLOWED_EMAILS`, as an
+   admin whose e-mail is already verified (Pocket ID only sets that on sign-up,
+  so doing it here matters: dsh-oidc-login refuses an identity its provider
+  marks unverified);
+- the `dsh` OIDC client (confidential, callback
+  `https://<DSH_OIDC_PUBLIC_URL>/auth/callback`, **All Users**), so no client
+  ID has to be copied anywhere — `compose.pocket-id.yaml` sets it to `dsh`;
+- that client's secret, from `pocket-id/secrets/dsh_oidc_client_secret`, a
+  file `scripts/pocket-id-setup.sh` generated. Pocket ID only keeps its hash.
+
+How it talks to Pocket ID: `STATIC_API_KEY_FILE` gives Pocket ID a fixed admin
+API key (`pocket_id/secrets/pocket_id_api_key`). Only the `pocket-id-bootstrap`
+one-shot container mounts it — never the dsh container, whose agent runs with
+your authority. The bootstrap uses the dsh image itself (`curl` and `jq` are
+already there), so there is no extra image to trust.
+
+Keep a second device (or a hardware key) enrolled as a backup passkey: **there
+is no password and no recovery e-mail**, so losing every passkey locks you out
+of Pocket ID (the dsh token link still gets you into dsh).
+
 
 What the overlay enforces:
 

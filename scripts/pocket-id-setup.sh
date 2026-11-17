@@ -7,11 +7,13 @@
 # Creates, under <dir>:
 #   data/                                   Pocket ID's SQLite database
 #   secrets/pocket_id_encryption_key        32-byte base64 key, mode 600
-#   secrets/dsh_oidc_client_secret          empty; you fill it from Pocket ID
+#   secrets/pocket_id_api_key               STATIC_API_KEY for the bootstrap, mode 600
+#   secrets/dsh_oidc_client_secret          the dsh client secret, mode 600
 #
-# There is no user file and no password to set: the account and its passkey are
-# created in the browser at /setup, and Pocket ID's sign-up page stops working
-# as soon as that account exists. Existing files are kept.
+# Everything else (the admin account, the OIDC client and its secret) is
+# registered by scripts/pocket-id-bootstrap.sh through Pocket ID's API, so no
+# Pocket ID UI step is needed except adding your passkey. Existing files are
+# kept, so re-running never invalidates what is already deployed.
 # Run it as the user that will own the files (the container's user).
 set -euo pipefail
 
@@ -40,9 +42,24 @@ else
   echo "kept: secrets/pocket_id_encryption_key"
 fi
 
+api="${dir}/secrets/pocket_id_api_key"
+if [[ ! -s "${api}" ]]; then
+  openssl rand -hex 32 > "${api}"
+  chmod 600 "${api}"
+  echo "generated: secrets/pocket_id_api_key"
+else
+  echo "kept: secrets/pocket_id_api_key"
+fi
+
 client="${dir}/secrets/dsh_oidc_client_secret"
-[[ -e "${client}" ]] || : > "${client}"
-chmod 600 "${client}"
+if [[ ! -s "${client}" ]]; then
+  # Pocket ID requires at least 16 characters; this is 43 base64url characters.
+  openssl rand -base64 32 | tr '+/' '-_' | tr -d '=' > "${client}"
+  chmod 600 "${client}"
+  echo "generated: secrets/dsh_oidc_client_secret"
+else
+  echo "kept: secrets/dsh_oidc_client_secret"
+fi
 
 if [[ "$(id -u)" == 0 ]]; then
   echo
@@ -57,17 +74,11 @@ Done. Next:
  1. cp .env.pocket-id.example .env and fill in:
       DSH_AUTH_DIR=${dir}
       DSH_AUTH_PUBLIC_URL=https://<pocket-id host>
+      DSH_AUTH_OWNER=<username>
       DSH_OIDC_PUBLIC_URL=https://<dsh host>
       DSH_OIDC_ALLOWED_EMAILS=<your e-mail>
     then: docker compose -f compose.yaml -f compose.pocket-id.yaml up -d
- 2. Open https://<pocket-id host>/setup , create your account, add a passkey.
-    That page stops working once the first account exists.
- 3. Administration -> OIDC Clients -> Add OIDC Client:
-      type: confidential
-      callback URL: https://<dsh host>/auth/callback
-    then its Access tab: All Users.
- 4. Write the client secret shown once into:
-      ${client}
-    set DSH_OIDC_CLIENT_ID in .env, and:
-      docker compose up -d deepseek-harness
+ 2. Register the admin, the client, its secret and a login link:
+      docker compose -f compose.yaml -f compose.pocket-id.yaml run --rm pocket-id-bootstrap
+ 3. Open the link it prints, click Add Passkey. Done.
 EOF
