@@ -232,8 +232,26 @@ What the overlay enforces:
 | `ENCRYPTION_KEY_FILE` | Docker secret | the key never appears in the environment or the compose file |
 | container | `read_only`, `cap_drop: ALL`, `no-new-privileges`, loopback port | same posture as the dsh container |
 
-Notes from a real deployment:
+**Sign out:** the plugin's own **Sign out** row sits at the end of
+**Settings → General** and links to `/auth/logout` (it appears only when the
+plugin is configured). dsh has no server-side session store, so that clears
+this browser's cookie only.
 
+Notes from a real deployment (each of these cost us a debugging session):
+
+- **Finish the passkey before leaving `/setup`.** Pocket ID closes the setup
+  page as soon as the first account exists. If the passkey step fails (for
+  example in a browser without a platform authenticator, such as the in-app
+  noVNC desktop), you are left with an account that cannot authenticate, and
+  the fix is to stop the container, move `data/` aside and start over — or use
+  the bootstrap service, which creates the account and prints a login link
+  instead of the setup form.
+- **`EMAILS_VERIFIED` only covers sign-ups.** The account created at `/setup`
+  keeps `email_verified: false` until the address is ticked in
+  **Administration → Users**; the bootstrap sets `emailVerified: true` itself.
+  The plugin refuses an identity its provider marks unverified
+  (`… is not verified by the provider`), and
+  `DSH_OIDC_REQUIRE_VERIFIED_EMAIL=0` relaxes that check.
 - **Container user:** the overlay runs Pocket ID as `DSH_AUTH_UID:DSH_AUTH_GID`
   (99:100 on Unraid). Starting it as root instead makes the image entrypoint
   create a user and `su-exec` into it, which `cap_drop: ALL` refuses
