@@ -337,42 +337,41 @@ sys.exit(1 if bad else 0)
 PY
 then ok "all requirements exactly pinned"; else bad "python requirements"; fi
 
-step "Authelia sign-in overlay (compose.authelia.yaml)"
-authelia_pin() {
+step "Pocket ID sign-in overlay (compose.pocket-id.yaml)"
+pocket_id_pin() {
   local line
-  line="$(yq '.services.authelia.image' compose.authelia.yaml)"
-  grep -Eq '^docker\.io/authelia/authelia:[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}$' <<<"${line}" \
-    || { echo "  authelia image must be docker.io/authelia/authelia:<X.Y.Z>@sha256:<digest>, got ${line}" >&2; return 1; }
+  line="$(yq '.services.pocket-id.image' compose.pocket-id.yaml)"
+  grep -Eq '^ghcr\.io/pocket-id/pocket-id:v[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}$' <<<"${line}" \
+    || { echo "  pocket-id image must be ghcr.io/pocket-id/pocket-id:v<X.Y.Z>@sha256:<digest>, got ${line}" >&2; return 1; }
 }
-authelia_overlay() {
-  # The overlay must keep dsh's hardening untouched and Authelia's own on.
-  [[ "$(yq '.services.authelia.read_only' compose.authelia.yaml)" == true ]] \
-    && [[ "$(yq '.services.authelia.cap_drop[0]' compose.authelia.yaml)" == ALL ]] \
-    && yq '.services.authelia.security_opt[]' compose.authelia.yaml | grep -qx 'no-new-privileges:true' \
-    && yq '.services.authelia.ports[]' compose.authelia.yaml | grep -Eq '^127\.0\.0\.1:' \
-    && [[ "$(yq '.services.deepseek-harness | keys | sort | join(",")' compose.authelia.yaml)" == depends_on,environment,secrets ]] \
-    && [[ "$(yq '.services.deepseek-harness.environment.DSH_OIDC_CLIENT_SECRET_FILE' compose.authelia.yaml)" == /run/secrets/dsh_oidc_client_secret ]]
+pocket_id_overlay() {
+  # Hardened like the image, loopback-only behind the TLS proxy, and the dsh
+  # side only gains the OIDC settings and its client secret.
+  [[ "$(yq '.services.pocket-id.read_only' compose.pocket-id.yaml)" == true ]] \
+    && [[ "$(yq '.services.pocket-id.cap_drop[0]' compose.pocket-id.yaml)" == ALL ]] \
+    && yq '.services.pocket-id.security_opt[]' compose.pocket-id.yaml | grep -qx 'no-new-privileges:true' \
+    && yq '.services.pocket-id.ports[]' compose.pocket-id.yaml | grep -Eq '^127\.0\.0\.1:' \
+    && [[ "$(yq '.services.deepseek-harness | keys | sort | join(",")' compose.pocket-id.yaml)" == depends_on,environment,secrets ]] \
+    && [[ "$(yq '.services.deepseek-harness.environment.DSH_OIDC_CLIENT_SECRET_FILE' compose.pocket-id.yaml)" == /run/secrets/dsh_oidc_client_secret ]]
 }
-authelia_config() {
-  # Security measures the README promises; a change here must be deliberate.
-  local c=config/authelia/configuration.yml
-  grep -qF "      policy: 'deny'" "${c}" \
-    && grep -qF "  default_policy: 'deny'" "${c}" \
-    && grep -qF "          - policy: 'two_factor'" "${c}" \
-    && grep -qF "  max_retries: 5" "${c}" && grep -qF "  ban_time: '12h'" "${c}" \
-    && grep -qF "    - 'ip'" "${c}" && grep -qF "    - 'user'" "${c}" \
-    && grep -qF "        require_pkce: true" "${c}" \
-    && grep -qF "    enforce_pkce: 'always'" "${c}" \
-    && grep -qF "      email: true" "${c}" \
-    && ! grep -Eq "^[^#]*(secret|key|password): '[^{]" "${c}"
+pocket_id_settings() {
+  # Settings a silent change of which would weaken the deployment.
+  local o=compose.pocket-id.yaml
+  [[ "$(yq '.services.pocket-id.environment.ALLOW_USER_SIGNUPS' "${o}")" == disabled ]] \
+    && [[ "$(yq '.services.pocket-id.environment.EMAILS_VERIFIED' "${o}")" == true ]] \
+    && [[ "$(yq '.services.pocket-id.environment.ANALYTICS_DISABLED' "${o}")" == true ]] \
+    && [[ "$(yq '.services.pocket-id.environment.TRUST_PROXY' "${o}")" == true ]] \
+    && yq '.services.pocket-id.environment.ENCRYPTION_KEY_FILE' "${o}" | grep -qx '/run/secrets/pocket_id_encryption_key' \
+    && ! grep -Eq '^[^#]*ENCRYPTION_KEY: *[A-Za-z0-9+/=]{10,}' "${o}"
 }
 if command -v yq >/dev/null 2>&1; then
-  check "Authelia image pinned by tag+digest" authelia_pin
-  check "overlay keeps Authelia hardened, loopback-only, and only adds OIDC env/secret to dsh" authelia_overlay
+  check "Pocket ID image pinned by tag+digest" pocket_id_pin
+  check "overlay keeps Pocket ID hardened, loopback-only, and only adds OIDC env/secret to dsh" pocket_id_overlay
+  check "Pocket ID stays sign-up-free, verified-email, telemetry-free, proxy-aware, key from a secret" pocket_id_settings
 else
-  skip "yq not installed (Authelia overlay checks)"
+  skip "yq not installed (Pocket ID overlay checks)"
 fi
-check "Authelia config keeps its security measures and holds no inline secret" authelia_config
+check "pocket-id-setup.sh generates the key with openssl and never prints it" bash -c '! grep -q "cat \"\${key}\"" scripts/pocket-id-setup.sh'
 
 step "renovate config"
 if command -v npx >/dev/null 2>&1 && (( online )); then
@@ -426,33 +425,22 @@ if (( online )); then
     rm -rf "${dl}"
   done
 
-  step "Authelia config validates with the pinned Authelia"
-  authelia_validate() {
-    local version tmp arch rc=0
-    version="$(yq '.services.authelia.image' compose.authelia.yaml | sed -E 's/.*:([0-9.]+)@.*/\1/')"
-    case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) echo "  unsupported arch" >&2; return 1 ;; esac
-    tmp="$(mktemp -d)"
-    local base="https://github.com/authelia/authelia/releases/download/v${version}"
-    local tarball="authelia-v${version}-linux-${arch}.tar.gz"
-    if ! { curl -fsSL --retry 3 -o "${tmp}/${tarball}" "${base}/${tarball}" \
-        && curl -fsSL --retry 3 -o "${tmp}/checksums.sha256" "${base}/checksums.sha256" \
-        && (cd "${tmp}" && grep -E "  ${tarball}\$" checksums.sha256 | sha256sum --check --strict --quiet -) \
-        && tar -xzf "${tmp}/${tarball}" -C "${tmp}" authelia; }; then
-      rm -rf "${tmp}"; return 1
-    fi
-    printf 'owner\nowner@example.com\nOwner\nstatic-check password 0123\nstatic-check password 0123\n' \
-      | AUTHELIA_BIN="${tmp}/authelia" scripts/authelia-setup.sh "${tmp}/auth" >/dev/null || rc=1
-    # Point the compose paths at the generated files, then validate the template.
-    sed -e "s#/run/secrets/#${tmp}/auth/secrets/#g; s#/config/users.yml#${tmp}/auth/config/users.yml#; s#/data/#${tmp}/auth/data/#g" \
-      config/authelia/configuration.yml > "${tmp}/rendered.yml"
-    (cd "${tmp}" && env -i PATH="${PATH}" X_AUTHELIA_CONFIG_FILTERS=template \
-      DSH_AUTH_PUBLIC_URL=https://auth.example.com DSH_AUTH_COOKIE_DOMAIN=auth.example.com \
-      DSH_AUTH_OWNER=owner DSH_OIDC_PUBLIC_URL=https://dsh.example.com \
-      ./authelia validate-config --config "${tmp}/rendered.yml") || rc=1
-    rm -rf "${tmp}"
-    return "${rc}"
+  step "Pocket ID pin matches the registry"
+  pocket_id_registry_pin() {
+    local ref tag digest repo token remote
+    ref="$(yq '.services.pocket-id.image' compose.pocket-id.yaml)"
+    tag="${ref%%@*}"; tag="${tag##*:}"
+    digest="${ref##*@}"
+    repo="pocket-id/pocket-id"
+    token="$(curl -fsSL "https://ghcr.io/token?scope=repository:${repo}:pull&service=ghcr.io" | jq -r .token)" \
+      || return 1
+    remote="$(curl -fsSI -H "Authorization: Bearer ${token}" \
+      -H 'Accept: application/vnd.oci.image.index.v1+json' \
+      "https://ghcr.io/v2/${repo}/manifests/${tag}" \
+      | tr -d '\r' | sed -n 's/^[Dd]ocker-[Cc]ontent-[Dd]igest: //p')"
+    [[ "${remote}" == "${digest}" ]] || { echo "  ${tag} is ${remote:-unknown}, pinned ${digest}" >&2; return 1; }
   }
-  check "authelia-setup.sh + configuration.yml pass authelia validate-config" authelia_validate
+  check "pocket-id:<tag> still resolves to the pinned digest" pocket_id_registry_pin
 
   step "release binary checksums (download + cross-check)"
   check "checksums match downloads and upstream-published sums" python3 scripts/refresh-checksums.py --verify

@@ -39,9 +39,9 @@
     managerFilePatterns: ['/(^|/)tools/npm/package\\.json$/', '/(^|/)tools/dsh-plugins/package\\.json$/'],
   },
 
-  // Only the Authelia overlay: compose.yaml's own image is our moving tag.
+  // Only the Pocket ID overlay: compose.yaml's own image is our moving tag.
   'docker-compose': {
-    managerFilePatterns: ['/(^|/)compose\\.authelia\\.yaml$/'],
+    managerFilePatterns: ['/(^|/)compose\\.pocket-id\\.yaml$/'],
   },
 
   customManagers: [
@@ -61,13 +61,13 @@
 
   packageRules: [
     {
-      description: 'Authelia (compose.authelia.yaml, example deployment): stable releases, tag + digest',
+      description: 'Pocket ID (compose.pocket-id.yaml, example deployment): stable releases, tag + digest',
       matchManagers: ['docker-compose'],
-      matchPackageNames: ['authelia/authelia', 'docker.io/authelia/authelia'],
+      matchPackageNames: ['pocket-id/pocket-id', 'ghcr.io/pocket-id/pocket-id'],
       pinDigests: true,
-      commitMessageTopic: 'Authelia image',
+      commitMessageTopic: 'Pocket ID image',
       prBodyNotes: [
-        'Authelia is not in the image: it is the example sign-in deployment of compose.authelia.yaml. static-check validates the overlay; check the Authelia release notes for configuration changes against config/authelia/configuration.yml.',
+        'Pocket ID is not in the image: it is the example sign-in deployment of compose.pocket-id.yaml. static-check re-checks the hardened overlay, and `--online` re-resolves the tag to confirm the pinned digest.',
       ],
     },
     {

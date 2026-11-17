@@ -22,7 +22,7 @@ kernels without Landlock; runzhliu/deepseek-harness-docker#35) and `ungoogled`
 3. **dsh plugins** in a seed `web` profile: `@louisremi/dsh-always-on`
    (enabled: Download/Show files/Edit instead of the dead "open locally"
    buttons), `@louisremi/dsh-oidc-login` (enabled, inert until `DSH_OIDC_*`
-   is set: sign-in through an OIDC provider such as Authelia, minting dsh's
+   is set: sign-in through an OIDC provider such as Pocket ID, minting dsh's
    own cookie; the token link keeps working), `dshmarket`,
    `dsh-plugin-subscriptions`, `@xbzbing/dsh-git-panel` and
    `@momojie-s/dsh-workspace-mcp` (installed, disabled; the last one is not
@@ -63,7 +63,7 @@ short; do not put repository instructions there.
 | `scripts/next-tag.sh` | Computes the next release tag `<X-rN>-augmented.<N>`. |
 | `scripts/release-plan.sh` | Publish decision, release-tag validation and per-variant tags, used by `ci.yml` (offline-tested by `static-check.sh`). |
 | `compose.yaml`, `compose.bwrap.yaml` | Example deployment (mirrors upstream's hardening) and the overlay for the bwrap variant. |
-| `compose.authelia.yaml`, `config/authelia/configuration.yml`, `.env.authelia.example`, `scripts/authelia-setup.sh` | Optional sign-in deployment (not in the image): a pinned, hardened Authelia as the OIDC provider for dsh-oidc-login, its templated config (security measures checked by `static-check.sh`; `--online` runs `authelia validate-config`), and the script that generates the secrets and the single owner. |
+| `compose.pocket-id.yaml`, `.env.pocket-id.example`, `scripts/pocket-id-setup.sh` | Optional sign-in deployment (not in the image): a pinned, hardened Pocket ID (passkey-only OIDC provider, no SMTP) for dsh-oidc-login. `static-check.sh` asserts the overlay stays hardened, sign-up-free, telemetry-free and key-from-secret; `--online` re-resolves the image tag to confirm the pinned digest. |
 | `.github/release.yml` | Categories for generated release notes. |
 | `renovate.json5`, `.github/renovate-global.json5` | Update detection. |
 | `SETUP.md` | One-time repository setup: secrets, Renovate GitHub App, branch protection, environments. |

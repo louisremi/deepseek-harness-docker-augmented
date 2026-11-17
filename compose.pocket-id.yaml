@@ -1,0 +1,85 @@
+# Optional overlay: sign in to dsh web with Pocket ID (passkeys) instead of the
+# launch-token link, which keeps working. README: "Optional: sign in with
+# Pocket ID".
+#
+# Pocket ID is a self-hosted, OpenID Connect certified provider whose only
+# credential is a passkey: no password, and no e-mail delivery at all (no
+# SMTP, no one-time codes). It matches dsh-oidc-login like any other OIDC
+# provider.
+#
+#   scripts/pocket-id-setup.sh ./pocket-id
+#   cp .env.pocket-id.example .env && $EDITOR .env
+#   docker compose -f compose.yaml -f compose.pocket-id.yaml up -d
+#   open https://<DSH_AUTH_PUBLIC_URL>/setup   # create the admin account + passkey
+#   Administration -> OIDC Clients -> Add OIDC Client (confidential)
+#     callback URL: <DSH_OIDC_PUBLIC_URL>/auth/callback
+#     Access tab: All Users
+#   write the client secret into ./pocket-id/secrets/dsh_oidc_client_secret
+#   set DSH_OIDC_CLIENT_ID in .env, then: docker compose up -d deepseek-harness
+services:
+  pocket-id:
+    image: ghcr.io/pocket-id/pocket-id:v2.19.3@sha256:189e03bb73bb86d7108fe81cbe2237c408cff2176b14cd7a39cc12a2ee8b2762
+    # Run as the owning uid:gid directly. As root the image's entrypoint
+    # addgroup/su-exec's into the PUID/PGID user, which `cap_drop: ALL` and
+    # `no-new-privileges` forbid ("su-exec: setgroups(100): Operation not
+    # permitted"); the entrypoint execs its command untouched for non-root.
+    user: "${DSH_AUTH_UID:-1000}:${DSH_AUTH_GID:-1000}"
+    environment:
+      # The public HTTPS origin the browser reaches Pocket ID at. Your TLS
+      # proxy (Caddy, Traefik, tsdproxy, ...) fronts port 1411.
+      APP_URL: ${DSH_AUTH_PUBLIC_URL:?set DSH_AUTH_PUBLIC_URL}
+      # 32-byte base64 key, as a Docker secret (the image reads *_FILE).
+      ENCRYPTION_KEY_FILE: /run/secrets/pocket_id_encryption_key
+      # TLS is terminated in front of the container.
+      TRUST_PROXY: "true"
+      # No sign-up at all: accounts are created by the admin.
+      ALLOW_USER_SIGNUPS: "disabled"
+      # dsh-oidc-login refuses an identity whose provider says
+      # email_verified=false, and Pocket ID defaults this to false.
+      EMAILS_VERIFIED: "true"
+      # No telemetry and no GitHub release check.
+      ANALYTICS_DISABLED: "true"
+      VERSION_CHECK_DISABLED: "true"
+      TZ: ${TZ:-UTC}
+    ports:
+      - "127.0.0.1:${DSH_AUTH_PORT:-1411}:1411"
+    volumes:
+      # Pocket ID keeps its SQLite database under /app/data: a real filesystem,
+      # not Unraid's /mnt/user (shfs/FUSE). Use /mnt/cache/appdata on Unraid.
+      - ${DSH_AUTH_DATA_DIR:-${DSH_AUTH_DIR:-./pocket-id}/data}:/app/data
+    secrets:
+      - pocket_id_encryption_key
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/pocket-id", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  deepseek-harness:
+    environment:
+      DSH_OIDC_ISSUER: ${DSH_AUTH_PUBLIC_URL:?set DSH_AUTH_PUBLIC_URL}
+      DSH_OIDC_CLIENT_ID: ${DSH_OIDC_CLIENT_ID:?set DSH_OIDC_CLIENT_ID (Pocket ID -> OIDC Clients)}
+      DSH_OIDC_CLIENT_SECRET_FILE: /run/secrets/dsh_oidc_client_secret
+      DSH_OIDC_PUBLIC_URL: ${DSH_OIDC_PUBLIC_URL:?set DSH_OIDC_PUBLIC_URL}
+      DSH_OIDC_ALLOWED_EMAILS: ${DSH_OIDC_ALLOWED_EMAILS:?set DSH_OIDC_ALLOWED_EMAILS}
+    secrets:
+      - dsh_oidc_client_secret
+    depends_on:
+      pocket-id:
+        condition: service_healthy
+
+secrets:
+  pocket_id_encryption_key:
+    file: ${DSH_AUTH_DIR:-./pocket-id}/secrets/pocket_id_encryption_key
+  dsh_oidc_client_secret:
+    file: ${DSH_AUTH_DIR:-./pocket-id}/secrets/dsh_oidc_client_secret
