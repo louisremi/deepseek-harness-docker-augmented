@@ -63,7 +63,7 @@ short; do not put repository instructions there.
 | `scripts/next-tag.sh` | Computes the next release tag `<X-rN>-augmented.<N>`. |
 | `scripts/release-plan.sh` | Publish decision, release-tag validation and per-variant tags, used by `ci.yml` (offline-tested by `static-check.sh`). |
 | `compose.yaml`, `compose.bwrap.yaml` | Example deployment (mirrors upstream's hardening) and the overlay for the bwrap variant. |
-| `compose.pocket-id.yaml`, `.env.pocket-id.example`, `scripts/pocket-id-setup.sh` | Optional sign-in deployment (not in the image): a pinned, hardened Pocket ID (passkey-only OIDC provider, no SMTP) for dsh-oidc-login. `static-check.sh` asserts the overlay stays hardened, sign-up-free, telemetry-free and key-from-secret; `--online` re-resolves the image tag to confirm the pinned digest. |
+| `compose.pocket-id.yaml`, `.env.pocket-id.example`, `scripts/pocket-id-setup.sh`, `scripts/pocket-id-bootstrap.sh` | Optional sign-in deployment (not in the image): a pinned, hardened Pocket ID (passkey-only OIDC provider, no SMTP) for dsh-oidc-login. `static-check.sh` asserts the overlay stays hardened, sign-up-free, telemetry-free and key-from-secret; `--online` re-resolves the image tag to confirm the pinned digest. `pocket-id-bootstrap.sh` is the one-shot, idempotent `setup`-profile service that registers the admin, the `dsh` client and its secret through Pocket ID's API (the API key is mounted only there), then prints a one-time login link. |
 | `.github/release.yml` | Categories for generated release notes. |
 | `renovate.json5`, `.github/renovate-global.json5` | Update detection. |
 | `SETUP.md` | One-time repository setup: secrets, Renovate GitHub App, branch protection, environments. |

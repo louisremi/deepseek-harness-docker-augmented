@@ -372,6 +372,24 @@ else
   skip "yq not installed (Pocket ID overlay checks)"
 fi
 check "pocket-id-setup.sh generates the key with openssl and never prints it" bash -c '! grep -q "cat \"\${key}\"" scripts/pocket-id-setup.sh'
+pocket_id_bootstrap() {
+  # The declarative setup must stay declarative: a one-shot service on the
+  # `setup` profile, the admin API key only there (never in dsh), a fixed
+  # client id, and the script must not echo either secret.
+  local o=compose.pocket-id.yaml
+  yq -e '.services["pocket-id-bootstrap"]' "${o}" >/dev/null \
+    && yq '.services["pocket-id-bootstrap"].profiles[]' "${o}" | grep -qx setup \
+    && yq '.services["pocket-id-bootstrap"].secrets[]' "${o}" | grep -qx pocket_id_api_key \
+    && ! yq '.services.deepseek-harness.secrets[]' "${o}" | grep -qx pocket_id_api_key \
+    && [[ "$(yq '.services.deepseek-harness.environment.DSH_OIDC_CLIENT_ID' "${o}")" == dsh ]] \
+    && [[ "$(yq '.services["pocket-id"].environment.STATIC_API_KEY_FILE' "${o}")" == /run/secrets/pocket_id_api_key ]] \
+    && ! grep -Eq 'echo .*\$\{?(api_key|client_secret)' scripts/pocket-id-bootstrap.sh
+}
+if command -v yq >/dev/null 2>&1; then
+  check "bootstrap: setup profile only, API key never in the dsh container, fixed client id" pocket_id_bootstrap
+else
+  skip "yq not installed (bootstrap checks)"
+fi
 
 step "renovate config"
 if command -v npx >/dev/null 2>&1 && (( online )); then
