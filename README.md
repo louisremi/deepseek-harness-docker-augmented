@@ -213,6 +213,23 @@ environment file on a tools volume), source ours from it:
 . /opt/deepseek-harness-augmented/augmented-bash-env
 ```
 
+Source it instead of keeping a `TMPDIR` fallback of your own, not in addition
+to one placed earlier: ours leaves an already-writable `TMPDIR` alone, so the
+first fallback wins. Also make your file safe under `set -u`: agents often run
+`bash -euo pipefail`, which aborts sourcing at the first unset variable (write
+`${LD_LIBRARY_PATH:-}`, not `$LD_LIBRARY_PATH`), so everything after it,
+`TMPDIR` included, is silently skipped.
+
+**Leave `TMPDIR` out of your compose.** It does not reach the agent's shell,
+because the script replaces it on every call. It does move the files of the
+dsh server itself, which runs outside the cage: `dsh-workspace-changes-*`,
+`dsh-spill-*` and similar, which can be hundreds of MB each. Unset, those go to
+the container's 512 MB `/tmp`, which is what the examples above do and what
+upstream does. Setting it to a directory on a share trades a bounded in-memory
+budget for unbounded files that nothing prunes. If `/tmp` fills up, give that
+tmpfs more room (`size=2g` in the `tmpfs:` entry) and watch it with
+`docker exec <container> df -h /tmp`.
+
 ## Run
 
 ```bash
