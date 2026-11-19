@@ -7,10 +7,10 @@
     "@louisremi/dsh-always-on": "0.6.0",
     "@louisremi/dsh-oidc-login": "0.2.0",
     "@momojie-s/dsh-workspace-mcp": "github:Momojie-S/dsh-workspace-mcp#9e8e81316d4f9f9b7fcdad692e1c9f57e7b6ebfd",
-    "@xbzbing/dsh-git-panel": "1.14.3",
+    "@xbzbing/dsh-git-panel": "1.14.4",
     "dsh-plugin-chrome-controller": "github:louisremi/dsh-plugin-chrome-controller#5a168b4b752d0ff7ad0057161d08fe38bc3fa250",
     "dsh-plugin-subscriptions": "0.9.13",
-    "dshmarket": "1.73.19"
+    "dshmarket": "1.73.20"
   },
   "dshPlugins": {
     "enabled": ["@louisremi/dsh-always-on", "@louisremi/dsh-oidc-login"]
