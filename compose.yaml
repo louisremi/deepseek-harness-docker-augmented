@@ -22,7 +22,7 @@ services:
       DSH_DESKTOP_PUBLIC_PORT: ${DSH_DESKTOP_PORT:-6080}
       HOME: /workspace
       # Optional sign-in through an OpenID Connect provider (README: "Optional:
-      # sign in with Authelia"; compose.authelia.yaml sets these). Empty = the
+      # sign in with Pocket ID"; compose.pocket-id.yaml sets these). Empty = the
       # launch-token link only, as upstream.
       DSH_OIDC_ISSUER: ${DSH_OIDC_ISSUER:-}
       DSH_OIDC_CLIENT_ID: ${DSH_OIDC_CLIENT_ID:-}
