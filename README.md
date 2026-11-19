@@ -220,13 +220,15 @@ first fallback wins. Also make your file safe under `set -u`: agents often run
 `${LD_LIBRARY_PATH:-}`, not `$LD_LIBRARY_PATH`), so everything after it,
 `TMPDIR` included, is silently skipped.
 
-**`TMPDIR` in compose only moves the dsh server's temp files.** It does not
-reach the agent's shell: the cage cannot write `/workspace/.tmp`, so the script
-replaces it on every call. The server, which runs outside the cage, does use it
-for its own temporary files (`dsh-workspace-changes-*`, `dsh-spill-*`, …),
-which can reach gigabytes. Left unset, they go to the container's 512 MB `/tmp`.
-If you set it, point it at a server-only directory and prune it now and then:
-those directories are not always removed.
+**Leave `TMPDIR` out of your compose.** It does not reach the agent's shell,
+because the script replaces it on every call. It does move the files of the
+dsh server itself, which runs outside the cage: `dsh-workspace-changes-*`,
+`dsh-spill-*` and similar, which can be hundreds of MB each. Unset, those go to
+the container's 512 MB `/tmp`, which is what the examples above do and what
+upstream does. Setting it to a directory on a share trades a bounded in-memory
+budget for unbounded files that nothing prunes. If `/tmp` fills up, give that
+tmpfs more room (`size=2g` in the `tmpfs:` entry) and watch it with
+`docker exec <container> df -h /tmp`.
 
 ## Run
 
