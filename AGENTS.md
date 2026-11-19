@@ -16,9 +16,9 @@ kernels without Landlock; runzhliu/deepseek-harness-docker#35) and `ungoogled`
 
 1. the session cookie rewritten from **`SameSite=Strict` to `SameSite=Lax`**
    (the Android PWA launch path needs it);
-2. **developer tooling** from HolyClaude's "both variants" list, minus its AI
-   CLIs and minus what upstream ships: apt tools, release binaries (gh, yq,
-   fzf, atuin), npm CLIs, a Python library venv;
+2. **developer tooling**: apt tools, release binaries (gh, yq, fzf, atuin),
+   npm CLIs and a Python library venv, listed with what each does in the
+   "Developer tools" section of `README.md` (AI CLIs are out of scope);
 3. **dsh plugins** in a seed `web` profile: `@louisremi/dsh-always-on`
    (enabled: Download/Show files/Edit instead of the dead "open locally"
    buttons), `@louisremi/dsh-oidc-login` (enabled, inert until `DSH_OIDC_*`

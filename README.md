@@ -89,29 +89,83 @@ If you created your volume with an earlier image and `dsh plugin add` fails with
 `profiles/web` and let the image re-seed it. Set `DSH_AUGMENTED_SEED=0` to
 disable seeding.
 
-**3. Developer tools** from [HolyClaude](https://github.com/CoderLuii/HolyClaude#both-variants-full--slim)'s
-"both variants" list, minus its AI CLIs (Claude Code, Gemini, Codex, Cursor,
-Task Master) and minus what upstream already ships (git, curl, wget, jq,
-ripgrep, zip, rsync, ssh, gcc/make, ImageMagick, Chromium, pnpm):
+**3. Developer tools** a coding agent reaches for daily, added to what
+upstream already ships (git, curl, wget, jq, ripgrep, zip, unzip, rsync,
+ssh, gcc/make, ImageMagick, Chromium, pnpm). Upstream's `dsh`, `node`,
+`python3` and `pnpm` keep PATH precedence; everything below is appended.
+AI coding-agent CLIs are out of scope on purpose.
 
-- apt: fd, bat, tree, tmux, nano, shellcheck, dig, ip/ss, strace, lsof, htop,
-  psql, redis-cli, sqlite3, mysql/mysqldump (MariaDB), pkg-config, emoji fonts
-- release binaries, sha256-pinned per arch: **gh**, **yq**, **fzf**, **atuin**
-- npm: TypeScript, tsx, Vite, esbuild, ESLint, Prettier, serve, nodemon,
-  concurrently, dotenv-cli, Playwright (uses upstream's Chromium)
-- Python venv `/opt/devtools/venv`, which is the `python`/`pip` on PATH:
-  requests, httpx, bs4, lxml, Pillow, pandas, numpy, openpyxl, python-docx,
-  jinja2, markdown, pyyaml, rich, click, tqdm, pytest, flake8, bandit,
-  tree-sitter, desloppify, playwright, apprise, …
+_Debian packages_ (apt; the browser needs the emoji font):
 
-Upstream's `dsh`, `node`, `python3` and `pnpm` keep PATH precedence.
+| Tool | What it's for |
+| --- | --- |
+| `fd` | Fast file-name search |
+| `bat` | `cat` with syntax highlighting |
+| `tree` | Directory trees |
+| `tmux` | Terminal multiplexer — keep servers running while you work |
+| `nano` | Terminal editor |
+| `shellcheck` | Shell-script linting |
+| `dig` | DNS queries |
+| `ip`, `ss` | Networking: interfaces, routes, sockets |
+| `strace` | System-call tracing |
+| `lsof` | Open files and network sockets per process |
+| `htop` | Process monitor |
+| `psql` | PostgreSQL client |
+| `redis-cli` | Redis client |
+| `sqlite3` | SQLite client |
+| `mysql`, `mysqldump` | MySQL clients (Debian's MariaDB) |
+| `pkg-config` | Build-time library discovery |
+
+_Release binaries_, sha256-pinned per architecture:
+
+| Tool | What it's for |
+| --- | --- |
+| `gh` | GitHub CLI: PRs, issues, releases from the terminal |
+| `yq` | Mike Farah's YAML/JSON/XML processor |
+| `fzf` | Fuzzy finder |
+| `atuin` | Shell-history client (installed without account setup or shell integration) |
+
+_npm CLIs_ (`/opt/devtools/npm`, pinned by lockfile):
+
+| Tool | What it's for |
+| --- | --- |
+| `tsc`, `tsx` | TypeScript compilation and execution |
+| `vite`, `esbuild` | Fast build tools |
+| `eslint`, `prettier` | Code quality and formatting |
+| `serve` | Static file server |
+| `nodemon` | Auto-restarting dev server |
+| `concurrently` | Run multiple scripts in parallel |
+| `dotenv` | Load env vars from `.env` files |
+| `playwright` | Browser automation, Node and Python; uses upstream's Chromium |
+
+_Python libraries_ (venv at `/opt/devtools/venv`; it is the `python`/`pip`
+on PATH, while `python3` stays upstream's bare interpreter):
+
+| Package | What it's for |
+| --- | --- |
+| `requests`, `httpx` | HTTP clients |
+| `aiohttp`, `aiomqtt` | Async HTTP and MQTT clients |
+| `beautifulsoup4`, `lxml` | HTML/XML parsing |
+| `Pillow` | Image processing (pre-compiled) |
+| `pandas`, `numpy` | Data manipulation (pre-compiled) |
+| `openpyxl` | Read/write Excel files |
+| `python-docx` | Read/write Word documents |
+| `defusedxml` | Hardened XML parsing |
+| `jinja2`, `markdown` | Templating and markdown rendering |
+| `pyyaml`, `python-dotenv` | Config-file parsing |
+| `rich`, `click`, `tqdm` | Pretty CLIs and progress bars |
+| `pytest`, `pytest-asyncio`, `flake8` | Python tests, async tests, linting |
+| `desloppify` | Code-quality review (`scan`, then `next`); writes `.desloppify/` |
+| `bandit` | Python security checks |
+| `tree-sitter` (+ language pack) | Parser-backed code analysis |
+| `playwright` | Browser automation (pairs with the npm one) |
+| `apprise` | Notifications (library and `python -m apprise`; the `apprise` CLI is not on PATH) |
 
 **4. A model-facing `AGENTS.md`** that tells the agent what it is running in
 and which tools it has: [agents/AGENTS.md](agents/AGENTS.md). It covers the
 read-only rootfs, `python` vs `python3`, how to install more without root, the
 shared Chromium on CDP `:9222`, and handing files over through Download buttons.
-HolyClaude does the same thing by copying a variant-specific `CLAUDE.md` into
-Claude Code's user memory on first boot. Here dsh's own mechanism is used:
+The mechanism is dsh's own:
 since 0.2.1-alpha.2, dsh loads a shared user-global `$DSH_AGENTS_HOME/AGENTS.md`
 after your `$DSH_HOME/AGENTS.md`. The image sets
 `DSH_AGENTS_HOME=/opt/deepseek-harness-augmented/agents` (read-only, so it always
