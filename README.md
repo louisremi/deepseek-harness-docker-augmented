@@ -238,6 +238,61 @@ capabilities stay dropped. On Ubuntu 23.10+ also set the host sysctl
 missing-Landlock case as runzhliu/deepseek-harness-docker#35, and upstream has
 published the `-bwrap.N` variant since `0.2.1-alpha.1-r1`.
 
+### Running as another user (e.g. Unraid `99:100`)
+
+The image runs as `node` (uid 1000). To have the files the agent writes land
+with your share's ownership, you can override `user:`. Three things then need
+to follow, all verified on Unraid with `user: "99:100"`:
+
+- **Move the Harness home.** The default `/home/node/.dsh` sits under a
+  `drwx------` home owned by uid 1000, which another uid cannot enter, and the
+  read-only rootfs means you cannot fix that at runtime. Set `DSH_HOME` to a
+  volume of your own (mount it there instead of at `/home/node/.dsh`), and
+  `NPM_CONFIG_CACHE` under it, and make the volume writable by your uid with a
+  one-shot init container:
+
+  ```yaml
+  deepseek-harness-init:
+    image: alpine:3
+    user: "0:0"
+    restart: "no"
+    volumes: [dsh-home:/dsh]
+    command: ["chown", "-R", "99:100", "/dsh"]
+  deepseek-harness:
+    user: "99:100"
+    depends_on:
+      deepseek-harness-init: { condition: service_completed_successfully }
+    volumes: [dsh-home:/dsh, ...]
+    environment:
+      DSH_HOME: /dsh
+      NPM_CONFIG_CACHE: /dsh/npm-cache
+      SHELL: /bin/bash
+  ```
+
+- **Set `SHELL`.** Your uid has no `/etc/passwd` entry in the image. With
+  `SHELL` unset, dsh asks the system for the user's login shell, and every
+  sidebar terminal (**New terminal**, and plugins that open one) fails with
+  `Could not open a sidebar terminal: … uv_os_get_passwd returned ENOENT`.
+  `SHELL=/bin/bash` (or `/bin/sh`) avoids the lookup.
+- **Expect other user lookups to fail.** Tools that need a passwd entry refuse
+  to run, for instance `ssh` (`No user exists for uid 99`). Workarounds such as
+  an `LD_PRELOAD` shim faking the entry are outside this image.
+
+### Behind a reverse proxy, or with the desktop off
+
+- **Reverse proxy** (Tailscale, Caddy, …): dsh checks the `Host`/`Origin`
+  header, so add `--trusted-host <public name>` to `command:`. Restating
+  `command:` replaces the image's `CMD`, so keep its arguments too:
+  `["web", "--patch", "/opt/deepseek-harness/web.cordis.patch.yml", "--no-open", "--trusted-host", "<public name>"]`.
+- **`DSH_DESKTOP_ENABLED=0`** turns off Xvfb, Chromium and noVNC, so ports 6080
+  and 9222 never listen and [compose.yaml](compose.yaml)'s healthcheck stays
+  unhealthy. Probe the web port alone:
+
+  ```yaml
+  healthcheck:
+    test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3080/').then(r => process.exit(r.status === 401 ? 0 : 1)).catch(() => process.exit(1))"]
+  ```
+
 ## Optional: sign in with Pocket ID
 
 By default you open dsh with the `?token=` link printed in the container logs.
