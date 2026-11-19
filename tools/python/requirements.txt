@@ -1,4 +1,4 @@
-# Python libraries baked into /opt/devtools/venv (HolyClaude slim parity).
+# Python libraries baked into /opt/devtools/venv (see the Python table in README.md).
 # Exact pins, kept current by Renovate (pip_requirements manager).
 # Installed with --only-binary=:all:, so every entry (and every transitive
 # dependency) must ship a manylinux wheel for cp313 on x86_64 and aarch64.

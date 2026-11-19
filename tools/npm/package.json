@@ -1,7 +1,7 @@
 {
   "name": "deepseek-harness-augmented-tools",
   "private": true,
-  "description": "Developer CLIs baked into louisremi/deepseek-harness-augmented (HolyClaude 'both variants' parity, AI CLIs excluded). Installed with `npm ci` into /opt/devtools/npm; bins are appended to PATH.",
+  "description": "Developer CLIs baked into louisremi/deepseek-harness-augmented (see the npm table in README.md; AI CLIs excluded). Installed with `npm ci` into /opt/devtools/npm; bins are appended to PATH.",
   "license": "MIT",
   "engines": {
     "node": ">=24"

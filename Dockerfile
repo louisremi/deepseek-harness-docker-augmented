@@ -12,8 +12,9 @@
 # Upstream's -market variant is deliberately not derived: dshmarket ships here
 # as a (disabled) profile plugin instead. On top of each base we add only:
 #   1. the SameSite=Lax session-cookie patch (guarded);
-#   2. developer tooling from HolyClaude's "both variants" list, minus its AI
-#      CLIs and minus what upstream already ships;
+#   2. developer tooling: apt tools, release binaries, npm CLIs and a Python
+#      venv (README.md "Developer tools"; AI CLIs are out of scope), on top of
+#      what upstream already ships;
 #   3. dsh plugins pre-installed in a seed `web` profile (tools/dsh-plugins);
 #   4. a model-facing AGENTS.md describing all of the above (agents/AGENTS.md);
 #   5. BASH_ENV, giving the agent's shell a persistent per-project TMPDIR
@@ -232,8 +233,8 @@ COPY scripts/augmented-entrypoint /usr/local/bin/augmented-entrypoint
 # ---------- Model-facing instructions ---------------------------------------
 # dsh loads $DSH_HOME/AGENTS.md (the user's own) and then $DSH_AGENTS_HOME/AGENTS.md
 # as user-global instructions for every session. A read-only directory in the
-# image keeps the file in step with the image (HolyClaude's first-boot copy of
-# CLAUDE.md goes stale). Override DSH_AGENTS_HOME to use another directory.
+# image keeps the file in step with the image (a copy into mutable user memory
+# would go stale). Override DSH_AGENTS_HOME to use another directory.
 COPY agents/ /opt/deepseek-harness-augmented/agents/
 
 # ---------- Persistent per-project TMPDIR -----------------------------------
