@@ -213,6 +213,21 @@ environment file on a tools volume), source ours from it:
 . /opt/deepseek-harness-augmented/augmented-bash-env
 ```
 
+Source it instead of keeping a `TMPDIR` fallback of your own, not in addition
+to one placed earlier: ours leaves an already-writable `TMPDIR` alone, so the
+first fallback wins. Also make your file safe under `set -u`: agents often run
+`bash -euo pipefail`, which aborts sourcing at the first unset variable (write
+`${LD_LIBRARY_PATH:-}`, not `$LD_LIBRARY_PATH`), so everything after it,
+`TMPDIR` included, is silently skipped.
+
+**`TMPDIR` in compose only moves the dsh server's temp files.** It does not
+reach the agent's shell: the cage cannot write `/workspace/.tmp`, so the script
+replaces it on every call. The server, which runs outside the cage, does use it
+for its own temporary files (`dsh-workspace-changes-*`, `dsh-spill-*`, …),
+which can reach gigabytes. Left unset, they go to the container's 512 MB `/tmp`.
+If you set it, point it at a server-only directory and prune it now and then:
+those directories are not always removed.
+
 ## Run
 
 ```bash
