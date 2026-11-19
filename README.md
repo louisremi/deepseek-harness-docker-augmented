@@ -40,6 +40,7 @@ unpatched image.
 | [@xbzbing/dsh-git-panel](https://github.com/xbzbing/dsh-git-panel) | off | IDE-style **Git** panel: branch and history graph, commit / amend / stage / discard, stash, tags and syntax-highlighted diffs, plus a branch marker in the input bar. It reads **and writes** the workspace repository, and its "AI suggest" button sends the diff to your configured model provider. |
 | [@louisremi/dsh-oidc-login](https://github.com/louisremi/dsh-oidc-login) | **on** (inert until configured) | Sign in with an OpenID Connect provider (e.g. a self-hosted Pocket ID: passkey-only) instead of the launch-token link. Does nothing until `DSH_OIDC_ISSUER` is set; the token link always keeps working. See [Optional: sign in with Pocket ID](#optional-sign-in-with-pocket-id). |
 | [dsh-plugin-chrome-controller](https://github.com/louisremi/dsh-plugin-chrome-controller) | off | `dsh_browser_*` tools that drive **your own Chrome** (tabs, clicks, typing, downloads) through a companion Chrome extension that pairs with DSH Web. The extension is not in the image: load the plugin's `extension` folder in Chrome and pair it from **Settings → Chrome browser**. Pairing over a remote DSH Web needs HTTPS. Pinned to [our fork](https://github.com/louisremi/dsh-plugin-chrome-controller), see the note below. |
+| [@js2hou/dsh-mcp-manager](https://github.com/Js2Hou/dsh-mcp-manager) | off | A visual **MCP manager** in **Settings → MCP**: every installed or enabled MCP server with its transport, command/URL, live connection status and tool count, plus add / remove, enable / disable, edit and a **Test** probe. Changes are written to the profile's `cordis.patch.yml` and apply live. It manages the same MCP fleet as dsh's built-in MCP settings, so it ships off. Pinned to the `v0.1.7` Git commit, see the note below. |
 | [@momojie-s/dsh-workspace-mcp](https://github.com/Momojie-S/dsh-workspace-mcp) | off | Loads **MCP servers per workspace**. A project's own `.dsh/mcp.servers.yml` (stdio or streamable-http servers, same fields as dsh's official MCP client) applies only to sessions whose working directory is that project; the tools are registered for the agent and removed with it, so projects never see each other's servers. It reconnects dropped servers automatically and reloads when the file changes. A project without the file loads nothing. **It starts the commands that file names**, so only enable it for projects you trust. |
 
 Turn the "off" plugins on from the sidebar's **Plugins** page. They are
@@ -64,6 +65,12 @@ pairing with a remote DSH Web, [#3](https://github.com/cyberofficial/dsh-plugin-
 `dsh_browser_save_file`). Once they are merged we intend to switch to the
 upstream plugin directly and drop the fork (tracked in
 [#186](https://github.com/louisremi/deepseek-harness-docker-augmented/issues/186)).
+
+dsh-mcp-manager tags `v0.1.7` (2026-11-18) on GitHub but npm stops at `0.1.6`,
+so it is pinned to that tag's commit (`github:Js2Hou/dsh-mcp-manager#<sha>`).
+The built `lib/` bundles are committed, so nothing is built at image build
+time. Renovate does not follow Git commits: bump the pin by hand when a newer
+tag appears.
 
 dsh-workspace-mcp is not published to npm and has no releases, so it is pinned
 to a Git commit (`github:Momojie-S/dsh-workspace-mcp#<sha>`) and built while

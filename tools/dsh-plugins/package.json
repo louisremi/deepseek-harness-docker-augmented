@@ -4,6 +4,7 @@
   "description": "dsh plugins pre-installed in the image's seed `web` profile (scripts/install-dsh-plugins.mjs). Exact pins (a plugin that is not on npm is pinned to a github:<owner>/<repo>#<commit sha>), bumped by Renovate where it can. `dshPlugins.enabled` lists the ones selected by default; the others are installed but switched off (enable them from the Plugins page). Not installed with npm: the dependencies block only exists so Renovate can track the pins.",
   "license": "MIT",
   "dependencies": {
+    "@js2hou/dsh-mcp-manager": "github:Js2Hou/dsh-mcp-manager#50c2926254e6764324bfc9d91b5f970decf1bb80",
     "@louisremi/dsh-always-on": "0.6.0",
     "@louisremi/dsh-oidc-login": "0.2.0",
     "@momojie-s/dsh-workspace-mcp": "github:Momojie-S/dsh-workspace-mcp#9e8e81316d4f9f9b7fcdad692e1c9f57e7b6ebfd",
