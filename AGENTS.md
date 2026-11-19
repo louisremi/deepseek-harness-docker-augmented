@@ -24,9 +24,11 @@ kernels without Landlock; runzhliu/deepseek-harness-docker#35) and `ungoogled`
    buttons), `@louisremi/dsh-oidc-login` (enabled, inert until `DSH_OIDC_*`
    is set: sign-in through an OIDC provider such as Pocket ID, minting dsh's
    own cookie; the token link keeps working), `dshmarket`,
-   `dsh-plugin-subscriptions`, `@xbzbing/dsh-git-panel` and
-   `@momojie-s/dsh-workspace-mcp` (installed, disabled; the last one is not
-   on npm, so it is pinned to a `github:` commit);
+   `dsh-plugin-subscriptions`, `@xbzbing/dsh-git-panel`,
+   `dsh-plugin-chrome-controller` and `@momojie-s/dsh-workspace-mcp`
+   (installed, disabled; the last two are not on npm, so they are pinned to a
+   `github:` commit; chrome-controller is our fork until its PRs are merged
+   upstream);
 4. a **model-facing `agents/AGENTS.md`**, wired through `DSH_AGENTS_HOME`, which
    tells the agent what it runs in and which tools it has;
 5. a **`BASH_ENV` script** that gives the agent's shell a persistent

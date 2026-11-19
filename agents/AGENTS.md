@@ -96,7 +96,9 @@ download it. Do not tell them to "open" a path on their computer.
 
 `dshmarket` (community plugin market), `dsh-plugin-subscriptions` (use
 ChatGPT/Claude/Grok/Copilot subscriptions as model providers),
-`@xbzbing/dsh-git-panel` (Git panel) and `@momojie-s/dsh-workspace-mcp`
-(loads MCP servers per project from `.dsh/mcp.servers.yml`) are installed
+`@xbzbing/dsh-git-panel` (Git panel), `dsh-plugin-chrome-controller`
+(`dsh_browser_*` tools for the user's own Chrome, needs its Chrome extension)
+and `@momojie-s/dsh-workspace-mcp` (loads MCP servers per project from
+`.dsh/mcp.servers.yml`) are installed
 but switched off. The user can enable them on the **Plugins** page. Mention
 this only when relevant.
