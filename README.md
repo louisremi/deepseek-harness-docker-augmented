@@ -39,7 +39,7 @@ unpatched image.
 | [dsh-plugin-subscriptions](https://github.com/V1ki/dsh-plugin-subscriptions) | off | Use ChatGPT (Codex), Claude, Grok, Copilot and Antigravity subscriptions as model providers. |
 | [@xbzbing/dsh-git-panel](https://github.com/xbzbing/dsh-git-panel) | off | IDE-style **Git** panel: branch and history graph, commit / amend / stage / discard, stash, tags and syntax-highlighted diffs, plus a branch marker in the input bar. It reads **and writes** the workspace repository, and its "AI suggest" button sends the diff to your configured model provider. |
 | [@louisremi/dsh-oidc-login](https://github.com/louisremi/dsh-oidc-login) | **on** (inert until configured) | Sign in with an OpenID Connect provider (e.g. a self-hosted Pocket ID: passkey-only) instead of the launch-token link. Does nothing until `DSH_OIDC_ISSUER` is set; the token link always keeps working. See [Optional: sign in with Pocket ID](#optional-sign-in-with-pocket-id). |
-| [dsh-plugin-chrome-controller](https://github.com/louisremi/dsh-plugin-chrome-controller) | off | `dsh_browser_*` tools that drive **your own Chrome** (tabs, clicks, typing, downloads) through a companion Chrome extension that pairs with DSH Web. The extension is not in the image: load the plugin's `extension` folder in Chrome and pair it from **Settings → Chrome browser**. Pairing over a remote DSH Web needs HTTPS. Pinned to [our fork](https://github.com/louisremi/dsh-plugin-chrome-controller), see the note below. |
+| [dsh-plugin-chrome-controller](https://github.com/cyberofficial/dsh-plugin-chrome-controller) | off | `dsh_browser_*` tools that drive **your own Chrome** (tabs, clicks, typing, downloads) through a companion Chrome extension that pairs with DSH Web. The extension is not in the image: load the plugin's `extension` folder in Chrome and pair it from **Settings → Chrome browser**. Pairing over a remote DSH Web needs HTTPS. Its `dsh_browser_save_file` tool saves files fetched with a tab's signed-in session into the workspace, under `.tmp/downloads/`. |
 | [@momojie-s/dsh-workspace-mcp](https://github.com/Momojie-S/dsh-workspace-mcp) | off | Loads **MCP servers per workspace**. A project's own `.dsh/mcp.servers.yml` (stdio or streamable-http servers, same fields as dsh's official MCP client) applies only to sessions whose working directory is that project; the tools are registered for the agent and removed with it, so projects never see each other's servers. It reconnects dropped servers automatically and reloads when the file changes. A project without the file loads nothing. **It starts the commands that file names**, so only enable it for projects you trust. |
 
 Turn the "off" plugins on from the sidebar's **Plugins** page. They are
@@ -55,15 +55,11 @@ manifest is fixed when `dsh web` starts, so if the Git tab does not appear
 after you enable it, restart the container (`docker compose restart`) and
 refresh the page. Its peers match the bundled dsh, so no exemption is needed.
 
-dsh-plugin-chrome-controller is [cyberofficial's plugin](https://github.com/cyberofficial/dsh-plugin-chrome-controller),
-not published to npm, so it is pinned to a Git commit of **our fork**
-([louisremi/dsh-plugin-chrome-controller](https://github.com/louisremi/dsh-plugin-chrome-controller)).
-The fork carries changes we have submitted upstream as pull requests
-([#2](https://github.com/cyberofficial/dsh-plugin-chrome-controller/pull/2)
-pairing with a remote DSH Web, [#3](https://github.com/cyberofficial/dsh-plugin-chrome-controller/pull/3)
-`dsh_browser_save_file`). Once they are merged we intend to switch to the
-upstream plugin directly and drop the fork (tracked in
-[#186](https://github.com/louisremi/deepseek-harness-docker-augmented/issues/186)).
+dsh-plugin-chrome-controller is not published to npm, so it is pinned to a
+release commit of [cyberofficial's repository](https://github.com/cyberofficial/dsh-plugin-chrome-controller)
+(`github:cyberofficial/dsh-plugin-chrome-controller#<sha>`). The extension
+must match: load the `extension` folder of the same release
+([v0.1.65](https://github.com/cyberofficial/dsh-plugin-chrome-controller/releases/tag/v0.1.65)).
 
 dsh-workspace-mcp is not published to npm and has no releases, so it is pinned
 to a Git commit (`github:Momojie-S/dsh-workspace-mcp#<sha>`) and built while
