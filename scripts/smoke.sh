@@ -234,6 +234,20 @@ for wd in "${proj}" "${proj}/sub/dir" /workspace / /tmp; do
 done
 pass "BASH_ENV: TMPDIR=<project>/.tmp under \$HOME (also from subdirectories, and for another HOME), persists across calls, pre-set TMPDIR kept, silent (also under -x)"
 
+# The writability probe never opens an existing file: a named pipe left in
+# .tmp (here under the old marker name) must neither block nor disable bash
+# startup. Probe files are removed again, and concurrent first calls racing to
+# create .tmp all get TMPDIR.
+in_scratch / sh -c "rm -rf ${proj}/.tmp/.dsh-tmpdir && mkfifo ${proj}/.tmp/.dsh-tmpdir"
+got="$(in_scratch "${proj}" env -u TMPDIR timeout 10 bash -c 'echo "$TMPDIR"')" \
+  || fail "bash did not start with a named pipe in \$TMPDIR (BASH_ENV probe blocked?)"
+[[ "${got}" == "${proj}/.tmp" ]] || fail "with a named pipe in .tmp, TMPDIR is '${got}', expected ${proj}/.tmp"
+[[ "$(in_scratch / sh -c "ls -A ${proj}/.tmp | grep -c '^\.dsh-probe\.'")" == 0 ]] || fail "BASH_ENV probe files were left in ${proj}/.tmp"
+in_scratch / mkdir -p /workspace/race-proj
+got="$(in_scratch /workspace/race-proj bash -c 'for i in $(seq 20); do env -u TMPDIR bash -c "echo \$TMPDIR" & done; wait' | sort | uniq -c | awk '{ print $1, $2 }')"
+[[ "${got}" == "20 /workspace/race-proj/.tmp" ]] || fail "concurrent first calls did not all get TMPDIR: ${got}"
+pass "BASH_ENV probe: a named pipe in .tmp does not block startup, no probe files left, concurrent first calls all get TMPDIR"
+
 if [[ "${variant}" == bwrap ]]; then
   # The cage dsh-sandbox-local builds in workspace-write mode: read-only /,
   # fresh /tmp, only the session workspace bound writable.

@@ -185,18 +185,19 @@ command the file lists exists in the image.
 
 Under the bwrap sandbox (the `bwrap` variant, or any host where dsh falls back
 to bubblewrap) every tool call runs in a fresh cage with its own empty `/tmp`:
-a file the agent writes to `/tmp` is gone by its next call. The container's
-`/tmp` is also small and `noexec`. Setting `TMPDIR=/workspace/.tmp` does not
-help, because inside the cage only the session's project directory is
-writable; `/workspace` itself is read-only.
+a file the agent writes to `/tmp` is gone by its next call. Setting
+`TMPDIR=/workspace/.tmp` does not help, because inside the cage only the
+session's project directory is writable; `/workspace` itself is read-only.
 
 So every variant sets `BASH_ENV=/opt/deepseek-harness-augmented/augmented-bash-env`
 ([scripts/augmented-bash-env](scripts/augmented-bash-env)). bash sources it
 before each tool call. It points `TMPDIR` at `<project>/.tmp` (the topmost
 writable directory between `$HOME` and the current directory), creating it if
-needed, with an empty `.dsh-tmpdir` marker from its write test. It persists,
-works from subdirectories, and allows executables. It leaves `TMPDIR` alone
-when that is already a writable directory, and does nothing outside
+needed. It persists, works from subdirectories, and lives on the workspace
+mount, so it is not limited by the container's small `noexec` `/tmp` that the
+Landlock sandbox exposes. It proves the directory writable with a probe file
+of its own, removed again. It leaves `TMPDIR` alone when that is already a
+writable directory, and does nothing outside
 `$HOME/<project>`. Upstream sets `HOME=/workspace`, the workspace mount; if
 you mount projects elsewhere, set `HOME` to that mount point too. Add `.tmp/`
 to your projects' `.gitignore`; the model-facing AGENTS.md tells the agent the

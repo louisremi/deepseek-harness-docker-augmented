@@ -10,8 +10,9 @@ describe what is installed. Project and personal instructions take precedence.
 - Debian trixie, user `node` (no root, no sudo). Capabilities are dropped.
 - **Read-only root filesystem.** Writable: your project directory under
   `/workspace` (`$HOME` is `/workspace`; the sandbox may make the rest of it
-  read-only to your shell) and `/tmp` (small, `noexec`, and may be wiped
-  between tool calls). `$DSH_HOME` (`/home/node/.dsh`) holds Harness data.
+  read-only to your shell) and `/tmp`, which is either wiped between tool
+  calls (bwrap sandbox) or small and `noexec` (Landlock sandbox).
+  `$DSH_HOME` (`/home/node/.dsh`) holds Harness data.
 - For scratch files use `$TMPDIR`: usually `<project>/.tmp`, which persists
   between tool calls and allows executables. Add `.tmp/` to the project's
   `.gitignore`.

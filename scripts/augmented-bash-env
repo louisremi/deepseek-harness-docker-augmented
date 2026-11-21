@@ -11,13 +11,16 @@
 #   Nothing happens when HOME is unset or /, outside $HOME, or at $HOME itself;
 #   $HOME/.tmp is never created.
 # - Walking from $HOME down to $PWD, the first directory whose .tmp can really
-#   be written wins. The write probe (.tmp/.dsh-tmpdir) is needed because
-#   Landlock does not answer access(2): `test -w` alone can say yes when the
-#   sandbox would refuse the write.
+#   be written wins. Writability is proven by creating, then removing, a fresh
+#   probe file of our own, because Landlock does not answer access(2): `test -w`
+#   alone can say yes when the sandbox would refuse the write. The probe never
+#   opens anything that already exists, so a named pipe in .tmp cannot block
+#   startup. A concurrent first call may create .tmp first; only its existence
+#   matters.
 # - Never fail, print or leak variables: every `bash -c` sources this, also
 #   under `set -euo pipefail`. Under `bash -x` its lines are not traced (the
 #   guard below runs with stderr discarded) unless BASH_XTRACEFD points
-#   elsewhere. Builtins only on the hot path; mkdir runs once per project.
+#   elsewhere. One `rm` per call removes the probe; mkdir runs once per project.
 
 { __dsh_tmp_flags=$-; set +x; } 2>/dev/null
 
@@ -38,10 +41,17 @@ if ! { [ -d "${TMPDIR:-}" ] && [ -w "${TMPDIR:-}" ]; }; then
               */*) __dsh_tmp_rest=${__dsh_tmp_rest#*/} ;;
               *) __dsh_tmp_rest= ;;
             esac
+            # mkdir may lose a race with a concurrent first call: only the
+            # directory's existence matters, not which call created it.
+            # The probe is a fresh file of our own: it never opens anything
+            # that already exists (a FIFO there would block every call).
             if [ -w "$__dsh_tmp_dir" ] \
-              && { [ -d "$__dsh_tmp_dir/.tmp" ] || mkdir -m 0700 "$__dsh_tmp_dir/.tmp" 2>/dev/null; } \
+              && { [ -d "$__dsh_tmp_dir/.tmp" ] || mkdir -m 0700 "$__dsh_tmp_dir/.tmp" 2>/dev/null || [ -d "$__dsh_tmp_dir/.tmp" ]; } \
               && [ -w "$__dsh_tmp_dir/.tmp" ] \
-              && { true >>"$__dsh_tmp_dir/.tmp/.dsh-tmpdir"; } 2>/dev/null; then
+              && __dsh_tmp_probe=$__dsh_tmp_dir/.tmp/.dsh-probe.$$.$RANDOM$RANDOM \
+              && [ ! -e "$__dsh_tmp_probe" ] && [ ! -L "$__dsh_tmp_probe" ] \
+              && { : >"$__dsh_tmp_probe"; } 2>/dev/null; then
+              command rm -f -- "$__dsh_tmp_probe" 2>/dev/null
               export TMPDIR="$__dsh_tmp_dir/.tmp"
               break
             fi
@@ -52,7 +62,7 @@ if ! { [ -d "${TMPDIR:-}" ] && [ -w "${TMPDIR:-}" ]; }; then
   esac
 fi
 
-unset __dsh_tmp_root __dsh_tmp_rest __dsh_tmp_dir
+unset __dsh_tmp_root __dsh_tmp_rest __dsh_tmp_dir __dsh_tmp_probe
 case $__dsh_tmp_flags in
   *x*) unset __dsh_tmp_flags; set -x ;;
   *) unset __dsh_tmp_flags ;;
