@@ -248,6 +248,28 @@ got="$(in_scratch /workspace/race-proj bash -c 'for i in $(seq 20); do env -u TM
 [[ "${got}" == "20 /workspace/race-proj/.tmp" ]] || fail "concurrent first calls did not all get TMPDIR: ${got}"
 pass "BASH_ENV probe: a named pipe in .tmp does not block startup, no probe files left, concurrent first calls all get TMPDIR"
 
+# The README's recipe for users with their own BASH_ENV ("source ours from it",
+# "make your file safe under set -u"), exercised as written: an own file that
+# reads an unset variable with ${VAR:-} and then sources ours must still give
+# TMPDIR=<project>/.tmp under `bash -euo pipefail`, with that variable unset.
+# The bare-expansion control proves the check can tell the two apart.
+own_env="/workspace/own-bash-env"
+in_scratch / sh -c "cat > ${own_env}-safe <<'EOF'
+case \":\${SMOKE_OWN_UNSET:-}:\" in *:/opt/own/lib:*) ;; *) SMOKE_OWN_UNSET=/opt/own/lib\${SMOKE_OWN_UNSET:+:\$SMOKE_OWN_UNSET} ;; esac
+export SMOKE_OWN_UNSET
+. ${bash_env}
+EOF
+sed 's/\${SMOKE_OWN_UNSET:-}/\$SMOKE_OWN_UNSET/' ${own_env}-safe > ${own_env}-bare"
+for own in safe bare; do
+  got="$(in_scratch "${proj}" env -u TMPDIR -u SMOKE_OWN_UNSET BASH_ENV="${own_env}-${own}" \
+    bash -euo pipefail -c 'echo "${TMPDIR:-}"' 2>/dev/null)" || true
+  case "${own}" in
+    safe) [[ "${got}" == "${proj}/.tmp" ]] || fail "own BASH_ENV sourcing ${bash_env}: TMPDIR is '${got}' under bash -euo pipefail, expected ${proj}/.tmp" ;;
+    bare) [[ "${got}" != "${proj}/.tmp" ]] || fail "the bare-expansion control got TMPDIR, so the set -u check above proves nothing" ;;
+  esac
+done
+pass "own BASH_ENV that sources ours: TMPDIR=<project>/.tmp under bash -euo pipefail with an unset variable in play (README recipe)"
+
 if [[ "${variant}" == bwrap ]]; then
   # The cage dsh-sandbox-local builds in workspace-write mode: read-only /,
   # fresh /tmp, only the session workspace bound writable.
