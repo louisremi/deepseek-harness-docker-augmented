@@ -10,7 +10,7 @@
     "@xbzbing/dsh-git-panel": "1.15.0",
     "dsh-plugin-chrome-controller": "github:cyberofficial/dsh-plugin-chrome-controller#7122cd9298eee18e9c124077f4fa76e89c547f38",
     "dsh-plugin-subscriptions": "0.9.14",
-    "dshmarket": "1.73.24"
+    "dshmarket": "1.74.0"
   },
   "dshPlugins": {
     "enabled": ["@louisremi/dsh-always-on", "@louisremi/dsh-oidc-login"]
