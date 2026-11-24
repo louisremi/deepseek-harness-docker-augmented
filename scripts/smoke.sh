@@ -108,11 +108,11 @@ esac
 
 # --- 3. patch: SameSite=Lax compiled in -----------------------------------
 run '
-  f=/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js
+  f=/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-host-authentication-token/lib/index.js
   grep -q "HttpOnly; SameSite=Lax" "$f"
   ! grep -q "SameSite=Strict" "$f"
 ' || fail "session cookie is not SameSite=Lax in compiled output"
-pass "SameSite=Lax present in dsh-client-connection"
+pass "SameSite=Lax present in dsh-host-authentication-token"
 
 # --- 4. tools ----------------------------------------------------------------
 gh_v="$(arg GH_VERSION)"; yq_v="$(arg YQ_VERSION)"; fzf_v="$(arg FZF_VERSION)"; atuin_v="$(arg ATUIN_VERSION)"

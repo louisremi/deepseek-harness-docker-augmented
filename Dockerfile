@@ -89,14 +89,18 @@ RUN set -eux; \
 # that intent-initiated top-level navigation. The value is a literal in
 # compiled output that neither config nor a hook can reach, and the runtime
 # rootfs is read-only, hence a guarded build-time sed: a no-op if upstream
-# ships Lax, a loud failure if it rewords the string.
+# ships Lax, a loud failure if it rewords the string. Since dsh 0.2.3-alpha.2
+# the browser login lives in dsh-host-authentication-token (it was in
+# dsh-client-connection). Only that cookie is patched: the Remote connection
+# credential (dsh-client-remote-connection, /api/remote.mux) is not opened by
+# a PWA launch and keeps upstream's Strict.
 RUN set -eux; \
-    f="${DSH_MODULES}/dsh-client-connection/lib/index.js"; \
+    f="${DSH_MODULES}/dsh-host-authentication-token/lib/index.js"; \
     if grep -q 'HttpOnly; SameSite=Strict' "$f"; then \
       sed -i 's/HttpOnly; SameSite=Strict/HttpOnly; SameSite=Lax/' "$f"; \
     fi; \
     grep -q 'HttpOnly; SameSite=Lax' "$f" \
-      || { echo "PATCH GUARD: session cookie string not found in dsh-client-connection; upstream changed it" >&2; exit 1; }; \
+      || { echo "PATCH GUARD: session cookie string not found in dsh-host-authentication-token; upstream changed it" >&2; exit 1; }; \
     ! grep -q 'SameSite=Strict' "$f"
 
 # ---------- Debian developer packages ---------------------------------------
