@@ -196,6 +196,10 @@ run "
   test \"\$(stat -c '%U:%G %a' ${bash_env})\" = 'root:root 644'
   ! test -w ${bash_env}
 " || fail "BASH_ENV is not ${bash_env} (root-owned, 0644, read-only)"
+# Build steps must not have sourced a base BASH_ENV (upstream's bwrap base sets
+# one): the image's own /workspace stays without a baked-in .tmp.
+docker run --rm --entrypoint sh "${image}" -c '! test -e /workspace/.tmp' \
+  || fail "the image contains /workspace/.tmp (a BASH_ENV was sourced during the build)"
 scratch="dsh-augmented-smoke-tmpdir-${suffix}"
 containers+=("${scratch}")
 docker run --detach --name "${scratch}" "${hardening[@]}" --entrypoint sleep "${image}" infinity >/dev/null
@@ -237,14 +241,15 @@ pass "BASH_ENV: TMPDIR=<project>/.tmp under \$HOME (also from subdirectories, an
 # The writability probe never opens an existing file: a named pipe left in
 # .tmp (here under the old marker name) must neither block nor disable bash
 # startup. Probe files are removed again, and concurrent first calls racing to
-# create .tmp all get TMPDIR.
+# create .tmp all get TMPDIR. The race driver is sh, not bash: a bash driver
+# would source BASH_ENV itself and create .tmp before the 20 calls start.
 in_scratch / sh -c "rm -rf ${proj}/.tmp/.dsh-tmpdir && mkfifo ${proj}/.tmp/.dsh-tmpdir"
 got="$(in_scratch "${proj}" env -u TMPDIR timeout 10 bash -c 'echo "$TMPDIR"')" \
   || fail "bash did not start with a named pipe in \$TMPDIR (BASH_ENV probe blocked?)"
 [[ "${got}" == "${proj}/.tmp" ]] || fail "with a named pipe in .tmp, TMPDIR is '${got}', expected ${proj}/.tmp"
 [[ "$(in_scratch / sh -c "ls -A ${proj}/.tmp | grep -c '^\.dsh-probe\.'")" == 0 ]] || fail "BASH_ENV probe files were left in ${proj}/.tmp"
 in_scratch / mkdir -p /workspace/race-proj
-got="$(in_scratch /workspace/race-proj bash -c 'for i in $(seq 20); do env -u TMPDIR bash -c "echo \$TMPDIR" & done; wait' | sort | uniq -c | awk '{ print $1, $2 }')"
+got="$(in_scratch /workspace/race-proj env -u TMPDIR sh -c 'test ! -e .tmp; for i in $(seq 20); do bash -c "echo \${TMPDIR:-UNSET}" & done; wait' | sort | uniq -c | awk '{ print $1, $2 }')"
 [[ "${got}" == "20 /workspace/race-proj/.tmp" ]] || fail "concurrent first calls did not all get TMPDIR: ${got}"
 pass "BASH_ENV probe: a named pipe in .tmp does not block startup, no probe files left, concurrent first calls all get TMPDIR"
 
