@@ -11,16 +11,20 @@
 #   Nothing happens when HOME is unset or /, outside $HOME, or at $HOME itself;
 #   $HOME/.tmp is never created.
 # - Walking from $HOME down to $PWD, the first directory whose .tmp can really
-#   be written wins. Writability is proven by creating, then removing, a fresh
-#   probe file of our own, because Landlock does not answer access(2): `test -w`
-#   alone can say yes when the sandbox would refuse the write. The probe never
-#   opens anything that already exists, so a named pipe in .tmp cannot block
-#   startup. A concurrent first call may create .tmp first; only its existence
-#   matters.
+#   be written wins. Writability is proven by creating (mktemp, atomically),
+#   then removing, a fresh probe file, because Landlock does not answer
+#   access(2): `test -w` alone can say yes when the sandbox would refuse the
+#   write. The probe never opens anything that already exists, so a named pipe
+#   or symlink in .tmp cannot block or redirect it. A concurrent first call may
+#   create .tmp first; only its existence matters.
+# - Same code as upstream's /opt/deepseek-harness/bwrap-bash-env
+#   (runzhliu/deepseek-harness-docker#49) except the root rule above: upstream
+#   also accepts $HOME/.tmp, for sessions rooted at /workspace itself.
 # - Never fail, print or leak variables: every `bash -c` sources this, also
 #   under `set -euo pipefail`. Under `bash -x` its lines are not traced (the
 #   guard below runs with stderr discarded) unless BASH_XTRACEFD points
-#   elsewhere. One `rm` per call removes the probe; mkdir runs once per project.
+#   elsewhere. Each call runs mktemp and rm for the probe; mkdir runs once per
+#   project.
 
 { __dsh_tmp_flags=$-; set +x; } 2>/dev/null
 
@@ -43,15 +47,14 @@ if ! { [ -d "${TMPDIR:-}" ] && [ -w "${TMPDIR:-}" ]; }; then
             esac
             # mkdir may lose a race with a concurrent first call: only the
             # directory's existence matters, not which call created it.
-            # The probe is a fresh file of our own: it never opens anything
-            # that already exists (a FIFO there would block every call).
+            # The probe is a fresh file that mktemp creates atomically (O_EXCL),
+            # so it never opens anything that already exists: a FIFO there
+            # would block every call, a symlink would redirect the write.
             if [ -w "$__dsh_tmp_dir" ] \
               && { [ -d "$__dsh_tmp_dir/.tmp" ] || mkdir -m 0700 "$__dsh_tmp_dir/.tmp" 2>/dev/null || [ -d "$__dsh_tmp_dir/.tmp" ]; } \
               && [ -w "$__dsh_tmp_dir/.tmp" ] \
-              && __dsh_tmp_probe=$__dsh_tmp_dir/.tmp/.dsh-probe.$$.$RANDOM$RANDOM \
-              && [ ! -e "$__dsh_tmp_probe" ] && [ ! -L "$__dsh_tmp_probe" ] \
-              && { : >"$__dsh_tmp_probe"; } 2>/dev/null; then
-              command rm -f -- "$__dsh_tmp_probe" 2>/dev/null
+              && __dsh_tmp_probe=$(command mktemp -- "$__dsh_tmp_dir/.tmp/.dsh-probe.XXXXXXXXXX" 2>/dev/null) \
+              && command rm -f -- "$__dsh_tmp_probe" 2>/dev/null; then
               export TMPDIR="$__dsh_tmp_dir/.tmp"
               break
             fi

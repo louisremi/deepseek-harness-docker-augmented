@@ -196,12 +196,23 @@ writable directory between `$HOME` and the current directory), creating it if
 needed. It persists, works from subdirectories, and lives on the workspace
 mount, so it is not limited by the container's small `noexec` `/tmp` that the
 Landlock sandbox exposes. It proves the directory writable with a probe file
-of its own, removed again. It leaves `TMPDIR` alone when that is already a
-writable directory, and does nothing outside
+of its own, created atomically by `mktemp` and removed again, so a named pipe
+or symlink in `.tmp` cannot block or redirect it. It leaves `TMPDIR` alone when
+that is already a writable directory, and does nothing outside
 `$HOME/<project>`. Upstream sets `HOME=/workspace`, the workspace mount; if
 you mount projects elsewhere, set `HOME` to that mount point too. Add `.tmp/`
 to your projects' `.gitignore`; the model-facing AGENTS.md tells the agent the
 same.
+
+Upstream's `bwrap` image ships the same mechanism since
+[runzhliu/deepseek-harness-docker#49](https://github.com/runzhliu/deepseek-harness-docker/pull/49)
+(`BASH_ENV=/opt/deepseek-harness/bwrap-bash-env`, ported from this script).
+Ours still replaces it, in every variant, for two reasons. Upstream's only
+exists in the `bwrap` image, while ours gives all three variants the same rule.
+And upstream also uses `$HOME/.tmp`, for sessions rooted at `/workspace`
+itself, while ours never creates `/workspace/.tmp`, where scratch files from
+every project would pile up. Apart from that rule the two scripts are the same
+code.
 
 **Your own `BASH_ENV` replaces ours.** If you set `BASH_ENV` (e.g. to an
 environment file on a tools volume), source ours from it:

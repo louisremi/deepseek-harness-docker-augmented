@@ -48,7 +48,10 @@ ARG TARGETARCH
 ARG DSH_MODULES=/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai
 
 USER root
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+# Build steps never source a BASH_ENV: upstream's bwrap base sets one for agent
+# shells since runzhliu/deepseek-harness-docker#49, and sourcing it at build
+# time would create /workspace/.tmp in the image. Ours replaces it below.
+SHELL ["/usr/bin/env", "-u", "BASH_ENV", "/bin/bash", "-o", "pipefail", "-c"]
 
 # ---------- Contract: what we rely on from the base -------------------------
 # Every variant: dsh's sandbox still prefers bwrap on Linux, and dsh still
@@ -70,6 +73,9 @@ RUN set -eux; \
         || { echo "PATCH GUARD: base image bwrap is setuid; our invariant requires a non-setuid bwrap (the runtime keeps no-new-privileges)" >&2; exit 1; }; \
       setpriv --reuid="$(id -u node)" --regid="$(id -g node)" --clear-groups test -x "${bwrap}" \
         || { echo "PATCH GUARD: base image bwrap (${bwrap}) is not executable by the runtime user node" >&2; exit 1; }; \
+    fi; \
+    if [ -e /opt/deepseek-harness/bwrap-bash-env ]; then \
+      echo "NOTE: the ${VARIANT} base ships /opt/deepseek-harness/bwrap-bash-env (upstream's BASH_ENV); augmented-bash-env replaces it for every variant (README: Scratch files and /tmp)."; \
     fi; \
     want_flavor=debian; [ "${VARIANT}" != ungoogled ] || want_flavor=ungoogled; \
     test "${CHROMIUM_FLAVOR:-}" = "${want_flavor}" \
