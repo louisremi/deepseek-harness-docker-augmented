@@ -48,10 +48,12 @@ ARG TARGETARCH
 ARG DSH_MODULES=/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai
 
 USER root
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Build steps never source a BASH_ENV: upstream's bwrap base sets one for agent
 # shells since runzhliu/deepseek-harness-docker#49, and sourcing it at build
-# time would create /workspace/.tmp in the image. Ours replaces it below.
-SHELL ["/usr/bin/env", "-u", "BASH_ENV", "/bin/bash", "-o", "pipefail", "-c"]
+# time would create /workspace/.tmp in the image. Empty means bash sources
+# nothing; ours is set at the end, with the rest of our ENV.
+ENV BASH_ENV=
 
 # ---------- Contract: what we rely on from the base -------------------------
 # Every variant: dsh's sandbox still prefers bwrap on Linux, and dsh still
