@@ -253,6 +253,29 @@ got="$(in_scratch /workspace/race-proj env -u TMPDIR sh -c 'test ! -e .tmp; for 
 [[ "${got}" == "20 /workspace/race-proj/.tmp" ]] || fail "concurrent first calls did not all get TMPDIR: ${got}"
 pass "BASH_ENV probe: a named pipe in .tmp does not block startup, no probe files left, concurrent first calls all get TMPDIR"
 
+# .tmp ignores itself, so git and dsh's change snapshots (git add --all into
+# the small /tmp) skip it without editing the project's .gitignore. An
+# existing .gitignore there (edited file, symlink, even a dangling one) is
+# never replaced or followed, and the concurrent first calls left one, not a
+# probe file.
+gi_proj=/workspace/gitignore-proj
+in_scratch / sh -c "mkdir -p ${gi_proj} && cd ${gi_proj} && git init -q && echo a > a && git add a"
+in_scratch "${gi_proj}" env -u TMPDIR bash -c 'head -c 4096 /dev/urandom > "$TMPDIR/scratch.bin"' \
+  || fail "could not write to \$TMPDIR in ${gi_proj}"
+[[ "$(in_scratch "${gi_proj}" sh -c 'tail -n 1 .tmp/.gitignore')" == '*' ]] || fail "${gi_proj}/.tmp/.gitignore was not created with '*'"
+[[ "$(in_scratch "${gi_proj}" git status --porcelain --untracked-files=all)" == "A  a" ]] \
+  || fail "git sees files in .tmp: $(in_scratch "${gi_proj}" git status --porcelain --untracked-files=all)"
+[[ "$(in_scratch / sh -c 'tail -n 1 /workspace/race-proj/.tmp/.gitignore')" == '*' ]] || fail "concurrent first calls left no .tmp/.gitignore"
+in_scratch / sh -c "echo custom > ${gi_proj}/.tmp/.gitignore"
+in_scratch "${gi_proj}" env -u TMPDIR bash -c ':'
+[[ "$(in_scratch / cat "${gi_proj}/.tmp/.gitignore")" == custom ]] || fail "an existing .tmp/.gitignore was rewritten"
+in_scratch / sh -c "rm ${gi_proj}/.tmp/.gitignore && ln -s ${gi_proj}/redirected ${gi_proj}/.tmp/.gitignore"
+in_scratch "${gi_proj}" env -u TMPDIR bash -c ':'
+in_scratch / sh -c "test -L ${gi_proj}/.tmp/.gitignore && test ! -e ${gi_proj}/redirected" \
+  || fail "a dangling .tmp/.gitignore symlink was replaced or followed"
+[[ "$(in_scratch / sh -c "ls -A ${gi_proj}/.tmp | grep -c '^\.dsh-probe\.'")" == 0 ]] || fail "BASH_ENV probe files were left in ${gi_proj}/.tmp"
+pass "BASH_ENV: .tmp ignores itself (.gitignore '*', git status clean), an existing .gitignore or symlink there is kept and not followed"
+
 # The README's recipe for users with their own BASH_ENV ("source ours from it",
 # "make your file safe under set -u"), exercised as written: an own file that
 # reads an unset variable with ${VAR:-} and then sources ours must still give
