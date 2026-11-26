@@ -25,11 +25,11 @@
 # The three bases always come from the same upstream release (<X-rN>);
 # scripts/static-check.sh enforces it and Renovate bumps them as one group.
 # renovate: datasource=docker depName=upstream-default packageName=runzhliu/deepseek-harness
-ARG BASE_DEFAULT=docker.io/runzhliu/deepseek-harness:0.2.2-rc.5-r1@sha256:11bb128b3a01fd54e9253c7fd4b3c568ada9d64c7cad819a091b23013fc21728
+ARG BASE_DEFAULT=docker.io/runzhliu/deepseek-harness:0.2.3-alpha.2-r1@sha256:a3b1d2fcd0f2b014108a52b09d23945b2d999287cb5268836a6ab972a7d1aee9
 # renovate: datasource=docker depName=upstream-bwrap packageName=runzhliu/deepseek-harness
-ARG BASE_BWRAP=docker.io/runzhliu/deepseek-harness:0.2.2-rc.5-r1-bwrap.1@sha256:0b5e7f8ca0691e851a3b58131f43832ee8176cdbe99b5400a40dde0848c719a1
+ARG BASE_BWRAP=docker.io/runzhliu/deepseek-harness:0.2.3-alpha.2-r1-bwrap.1@sha256:b1e8e2a26dc1c1a8b2651a8d9d4a22ec2c4b22613fa23f71b2ec524952a124f6
 # renovate: datasource=docker depName=upstream-ungoogled packageName=runzhliu/deepseek-harness
-ARG BASE_UNGOOGLED=docker.io/runzhliu/deepseek-harness:0.2.2-rc.5-r1-ungoogled.1@sha256:5de186207f9852fb42497138c13d6d18d35cabaa7002fd912364a94fcf046369
+ARG BASE_UNGOOGLED=docker.io/runzhliu/deepseek-harness:0.2.3-alpha.2-r1-ungoogled.1@sha256:8bc9690fb95a80206ce0bb2a37c4a0a2205a8856363f5e258f8b0cdb82b75a13
 ARG VARIANT=default
 
 FROM ${BASE_DEFAULT} AS base-default
@@ -89,14 +89,18 @@ RUN set -eux; \
 # that intent-initiated top-level navigation. The value is a literal in
 # compiled output that neither config nor a hook can reach, and the runtime
 # rootfs is read-only, hence a guarded build-time sed: a no-op if upstream
-# ships Lax, a loud failure if it rewords the string.
+# ships Lax, a loud failure if it rewords the string. Since dsh 0.2.3-alpha.2
+# the browser login lives in dsh-host-authentication-token (it was in
+# dsh-client-connection). Only that cookie is patched: the Remote connection
+# credential (dsh-client-remote-connection, /api/remote.mux) is not opened by
+# a PWA launch and keeps upstream's Strict.
 RUN set -eux; \
-    f="${DSH_MODULES}/dsh-client-connection/lib/index.js"; \
+    f="${DSH_MODULES}/dsh-host-authentication-token/lib/index.js"; \
     if grep -q 'HttpOnly; SameSite=Strict' "$f"; then \
       sed -i 's/HttpOnly; SameSite=Strict/HttpOnly; SameSite=Lax/' "$f"; \
     fi; \
     grep -q 'HttpOnly; SameSite=Lax' "$f" \
-      || { echo "PATCH GUARD: session cookie string not found in dsh-client-connection; upstream changed it" >&2; exit 1; }; \
+      || { echo "PATCH GUARD: session cookie string not found in dsh-host-authentication-token; upstream changed it" >&2; exit 1; }; \
     ! grep -q 'SameSite=Strict' "$f"
 
 # ---------- Debian developer packages ---------------------------------------

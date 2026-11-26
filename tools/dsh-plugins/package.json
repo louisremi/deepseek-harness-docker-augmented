@@ -5,11 +5,11 @@
   "license": "MIT",
   "dependencies": {
     "@louisremi/dsh-always-on": "0.6.0",
-    "@louisremi/dsh-oidc-login": "0.2.0",
+    "@louisremi/dsh-oidc-login": "0.2.1",
     "@momojie-s/dsh-workspace-mcp": "github:Momojie-S/dsh-workspace-mcp#9e8e81316d4f9f9b7fcdad692e1c9f57e7b6ebfd",
     "@xbzbing/dsh-git-panel": "1.16.0",
     "dsh-plugin-chrome-controller": "github:cyberofficial/dsh-plugin-chrome-controller#7122cd9298eee18e9c124077f4fa76e89c547f38",
-    "dsh-plugin-subscriptions": "0.9.14",
+    "dsh-plugin-subscriptions": "0.9.15",
     "dshmarket": "1.80.1"
   },
   "dshPlugins": {
