@@ -330,12 +330,20 @@ to follow, all verified on Unraid with `user: "99:100"`:
 ## Optional: sign in with Pocket ID
 
 By default you open dsh with the `?token=` link printed in the container logs.
-To sign in from any device (including the installed PWA) through a real login,
-run a self-hosted [Pocket ID](https://pocket-id.org) next to dsh. The bundled
-[dsh-oidc-login](https://github.com/louisremi/dsh-oidc-login) plugin redirects
-your browser to Pocket ID and, once Pocket ID vouches for you, hands the browser
-**dsh's own session cookie**, the same one the token link gives. Nothing in dsh
-is patched, and the token link keeps working (use it if Pocket ID is down).
+Since 0.2.3, dsh also offers **remote login** at `/`: paste that link, or
+request device pairing and approve it from a device that is already signed in
+(or scan a QR invitation from Settings → Remote connection). Each of these
+still needs the token or a signed-in device.
+
+To sign in from any device on its own (including the installed PWA) through a
+real login, run a self-hosted [Pocket ID](https://pocket-id.org) next to dsh.
+The bundled [dsh-oidc-login](https://github.com/louisremi/dsh-oidc-login)
+plugin sends your browser from `<DSH_OIDC_PUBLIC_URL>/auth/login` to Pocket ID.
+Once Pocket ID vouches for you, the plugin gives the browser **its own signed
+session cookie**, which dsh accepts through the plugin's authentication
+provider. Nothing in dsh is patched, and dsh's own sign-in at `/` keeps
+working (use it if Pocket ID is down). The plugin leaves `/` to dsh, so
+**bookmark `/auth/login`**.
 
 Pocket ID is passkey-only and needs **no SMTP and no one-time codes**. The
 account, the OIDC client and its secret are registered through Pocket ID's own

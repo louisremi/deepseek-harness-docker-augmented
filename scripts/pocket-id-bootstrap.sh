@@ -111,6 +111,7 @@ Open this once, then click "Add Passkey" (it signs you in without a passkey):
 
   ${app%/}/lc/${token}
 
-When you are logged into dsh with that passkey, the setup is done. The code is
+Then sign in to dsh at ${dsh_url%/}/auth/login with that passkey (bookmark it:
+dsh's own page at / does not link to it), and the setup is done. The code is
 single use and short lived; re-run this script for a fresh one.
 EOF
