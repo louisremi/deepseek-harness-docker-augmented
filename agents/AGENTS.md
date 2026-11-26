@@ -14,8 +14,8 @@ describe what is installed. Project and personal instructions take precedence.
   calls (bwrap sandbox) or small and `noexec` (Landlock sandbox).
   `$DSH_HOME` (`/home/node/.dsh`) holds Harness data.
 - For scratch files use `$TMPDIR`: usually `<project>/.tmp`, which persists
-  between tool calls and allows executables. Add `.tmp/` to the project's
-  `.gitignore`.
+  between tool calls and allows executables. It ignores itself for git (its
+  own `.gitignore`), so do not add `.tmp/` to the project's `.gitignore`.
 - `apt-get`, `sudo`, `npm install -g` and `pip install` into system or
   `/opt` paths all fail. See "Installing more" below.
 - The user reaches you only through the browser. They cannot see this

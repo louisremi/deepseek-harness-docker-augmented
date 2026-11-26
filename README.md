@@ -200,9 +200,16 @@ of its own, created atomically by `mktemp` and removed again, so a named pipe
 or symlink in `.tmp` cannot block or redirect it. It leaves `TMPDIR` alone when
 that is already a writable directory, and does nothing outside
 `$HOME/<project>`. Upstream sets `HOME=/workspace`, the workspace mount; if
-you mount projects elsewhere, set `HOME` to that mount point too. Add `.tmp/`
-to your projects' `.gitignore`; the model-facing AGENTS.md tells the agent the
-same.
+you mount projects elsewhere, set `HOME` to that mount point too.
+
+`.tmp` ignores itself: the script gives it a `.gitignore` containing `*` (only
+when there is none; an existing one is never touched), so you do not need to
+add `.tmp/` to your projects' `.gitignore`, which may not be yours to edit.
+This matters beyond `git status`: dsh records each turn's file changes by
+snapshotting every file git does not ignore into the container's `/tmp`
+(`dsh-workspace-changes-*`), which is a 512 MB tmpfs in `compose.yaml`. A few
+gigabytes of scratch files in an unignored `.tmp` fill it, and anything else
+that needs `/tmp` then fails.
 
 Upstream's `bwrap` image ships the same mechanism since
 [runzhliu/deepseek-harness-docker#49](https://github.com/runzhliu/deepseek-harness-docker/pull/49)

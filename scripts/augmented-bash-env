@@ -17,14 +17,19 @@
 #   write. The probe never opens anything that already exists, so a named pipe
 #   or symlink in .tmp cannot block or redirect it. A concurrent first call may
 #   create .tmp first; only its existence matters.
+# - The chosen .tmp gets a `.gitignore` of `*` when it has none (no file and
+#   no symlink there), written through a fresh mktemp file hard-linked into
+#   place, so git and dsh's change snapshots skip it without editing the
+#   project's own .gitignore. An existing .gitignore is never touched.
 # - Same code as upstream's /opt/deepseek-harness/bwrap-bash-env
-#   (runzhliu/deepseek-harness-docker#49) except the root rule above: upstream
-#   also accepts $HOME/.tmp, for sessions rooted at /workspace itself.
+#   (runzhliu/deepseek-harness-docker#49) except the root rule above (upstream
+#   also accepts $HOME/.tmp, for sessions rooted at /workspace itself) and the
+#   .gitignore rule above.
 # - Never fail, print or leak variables: every `bash -c` sources this, also
 #   under `set -euo pipefail`. Under `bash -x` its lines are not traced (the
 #   guard below runs with stderr discarded) unless BASH_XTRACEFD points
 #   elsewhere. Each call runs mktemp and rm for the probe; mkdir runs once per
-#   project.
+#   project, and mktemp, ln and rm for the .gitignore once per .tmp.
 
 { __dsh_tmp_flags=$-; set +x; } 2>/dev/null
 
@@ -56,6 +61,15 @@ if ! { [ -d "${TMPDIR:-}" ] && [ -w "${TMPDIR:-}" ]; }; then
               && __dsh_tmp_probe=$(command mktemp -- "$__dsh_tmp_dir/.tmp/.dsh-probe.XXXXXXXXXX" 2>/dev/null) \
               && command rm -f -- "$__dsh_tmp_probe" 2>/dev/null; then
               export TMPDIR="$__dsh_tmp_dir/.tmp"
+              # Self-ignoring .tmp: dsh snapshots every non-ignored file into
+              # the small /tmp. Same no-follow rule: link(2) never replaces
+              # an existing .gitignore, file or symlink.
+              if ! { [ -e "$TMPDIR/.gitignore" ] || [ -L "$TMPDIR/.gitignore" ]; } \
+                && __dsh_tmp_probe=$(command mktemp -- "$TMPDIR/.dsh-probe.XXXXXXXXXX" 2>/dev/null); then
+                { printf '%s\n' '# Scratch directory (TMPDIR) of deepseek-harness-augmented: never committed.' '*' >"$__dsh_tmp_probe" \
+                    && command ln -- "$__dsh_tmp_probe" "$TMPDIR/.gitignore"; } 2>/dev/null || :
+                command rm -f -- "$__dsh_tmp_probe" 2>/dev/null || :
+              fi
               break
             fi
           done
