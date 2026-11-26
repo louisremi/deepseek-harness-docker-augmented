@@ -79,17 +79,47 @@ exemption, is a human decision. Disabled plugins get an exemption
 automatically (`PLUGIN NOTICE` in the log); that is expected, not a failure.
 - Never add `chmod u+s` to make it pass.
 
-### `PATCH GUARD: session cookie string not found in dsh-client-connection`
+### `PATCH GUARD: session cookie string not found in dsh-host-authentication-token`
+
+The browser login cookie (the one `/?token=` mints) is not where the step
+looks. It has moved before: up to dsh 0.2.2 it lived in
+`dsh-client-connection`, since 0.2.3-alpha.2 in `dsh-host-authentication-token`.
+Search the whole dsh tree of the new base, since the owner may be a package
+dsh only depends on indirectly (so `npm pack` of the direct dependencies can
+miss it):
 
 ```bash
-cd "$(mktemp -d)" && npm pack "@deepseek-ai/dsh-client-connection@${v}" >/dev/null && tar -xzf *.tgz
-grep -n 'SameSite' package/lib/*.js
+img=docker.io/runzhliu/deepseek-harness:<new tag>
+docker run --rm --entrypoint sh "$img" -c \
+  'grep -rln "SameSite=" /usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/*/lib'
 ```
 
-- If the cookie is now built differently (e.g. `sameSite: "strict"` object
-  form), update the sed *and* the guard to the new literal so the result is
-  Lax. Keep the "fail if Strict remains" assertion.
-- If upstream now ships Lax, the step passes on its own. Nothing to do.
+No Docker here? `npm pack` the candidates (`dsh-host-authentication-token`,
+`dsh-client-connection`, `dsh-web-app`) at the DSH version and grep them.
+
+- **Moved, same literal:** point `f=` in the Dockerfile step, the guard
+  message, `scripts/smoke.sh` (section 3) and `scripts/write-manifest.sh` at
+  the new file. The runtime check in `smoke.sh` (the `Set-Cookie` of
+  `/?token=` must say `SameSite=Lax`) proves it is the right cookie.
+- **Several matches:** patch only the browser login, the cookie set when
+  `/?token=` is exchanged. `dsh-client-remote-connection` (`/api/remote.mux`,
+  the Remote connection credential) also sets `SameSite=Strict`; it is not
+  opened by a PWA launch and stays Strict on purpose.
+- **Built differently** (e.g. a `sameSite: "strict"` object form): update the
+  sed *and* the guard to the new literal so the result is Lax. Keep the "fail
+  if Strict remains" assertion.
+- **Upstream now ships Lax:** the step passes on its own. Nothing to do.
+- If the move also changed the API `@louisremi/dsh-oidc-login` calls, the
+  configured-OIDC block of `smoke.sh` fails or the logs say `oidc-login:
+  disabled, this dsh lacks the connection/webServer APIs it needs`. That
+  plugin ships enabled: fix it in its own repo (it adapts to both dsh
+  generations in `src/dsh-auth.ts`, and its CI runs the e2e on the newest dsh),
+  release it, then bump the pin here. Never disable it here (a human
+  decision).
+- A **403** there instead (e.g. `browser GET / gave 403`) is dsh's Host/Origin
+  fence, not the plugin: since 0.2.3 it applies to every route. The smoke
+  test declares its name with `-- --trusted-host dsh.smoke.test` on
+  `start()`; keep it.
 
 ## 2. Which upstream tag lines do we follow?
 

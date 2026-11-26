@@ -28,7 +28,7 @@ if command -v bwrap >/dev/null; then printf 'bwrap=%s\n' "$(bwrap --version | aw
 
 section "patches"
 grep -o 'HttpOnly; SameSite=[A-Za-z]*' \
-  /usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-client-connection/lib/index.js
+  /usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-host-authentication-token/lib/index.js
 
 section "model-facing instructions"
 printf 'DSH_AGENTS_HOME=%s\n' "${DSH_AGENTS_HOME:-}"
