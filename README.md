@@ -309,6 +309,8 @@ to follow, all verified on Unraid with `user: "99:100"`:
   header, so add `--trusted-host <public name>` to `command:`. Restating
   `command:` replaces the image's `CMD`, so keep its arguments too:
   `["web", "--patch", "/opt/deepseek-harness/web.cordis.patch.yml", "--no-open", "--trusted-host", "<public name>"]`.
+  Since dsh 0.2.3 an undeclared name gets **403 on every route**, including
+  the sign-in routes of dsh-oidc-login (before, only some routes checked it).
 - **`DSH_DESKTOP_ENABLED=0`** turns off Xvfb, Chromium and noVNC, so ports 6080
   and 9222 never listen and [compose.yaml](compose.yaml)'s healthcheck stays
   unhealthy. Probe the web port alone:
@@ -339,6 +341,10 @@ cp .env.pocket-id.example .env             # then edit the URLs, e-mail, uid/gid
 docker compose -f compose.yaml -f compose.pocket-id.yaml up -d
 docker compose -f compose.yaml -f compose.pocket-id.yaml run --rm pocket-id-bootstrap
 ```
+
+Reach dsh under the name in `DSH_OIDC_PUBLIC_URL`, and declare that name
+with `--trusted-host` (see [Behind a reverse proxy](#behind-a-reverse-proxy-or-with-the-desktop-off)):
+since dsh 0.2.3, `/auth/login` answers 403 without it.
 
 The bootstrap prints one link. Open it, click **Add Passkey**, and you are in
 dsh. It is idempotent: re-run it any time for a fresh link (for example after

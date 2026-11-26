@@ -302,10 +302,21 @@ done < <(plugin_names)
 pass "seed web profile: $(plugin_names | while read -r n; do printf '%s@%s(%s) ' "${n}" "$(plugin_version "${n}")" "$(plugin_enabled "${n}" && echo on || echo off)"; done)"
 
 # --- 8. runtime: dsh web on a fresh named volume -----------------------------
-start() {  # start <name> <volume args...>; prints the host port
+start() {  # start <name> <docker run args...> [-- <extra dsh web args>]; prints the host port
   local name="$1"; shift
+  local run_args=() dsh_args=()
+  while (( $# )); do
+    if [[ "$1" == -- ]]; then shift; dsh_args=("$@"); break; fi
+    run_args+=("$1"); shift
+  done
   containers+=("${name}")
-  docker run --detach --name "${name}" --publish 127.0.0.1::3080 "${hardening[@]}" --shm-size 1g "$@" "${image}" >/dev/null
+  if (( ${#dsh_args[@]} )); then
+    # Our ENTRYPOINT runs the image CMD; restate it to append dsh web arguments.
+    docker run --detach --name "${name}" --publish 127.0.0.1::3080 "${hardening[@]}" --shm-size 1g "${run_args[@]}" "${image}" \
+      web --patch /opt/deepseek-harness/web.cordis.patch.yml --no-open "${dsh_args[@]}" >/dev/null
+  else
+    docker run --detach --name "${name}" --publish 127.0.0.1::3080 "${hardening[@]}" --shm-size 1g "${run_args[@]}" "${image}" >/dev/null
+  fi
   docker port "${name}" 3080/tcp | awk -F: 'NR == 1 { print $NF }'
 }
 wait_ready() {  # wait_ready <name> <port>; sets token
@@ -484,12 +495,15 @@ pass "dsh-oidc-login without configuration: no /auth routes, token login only"
 
 # Configured with an issuer that is down: browser navigations go to the
 # sign-in page (503 there, pointing at the token link); API clients and the
-# health check still get 401; the launch-token link still works.
+# health check still get 401; the launch-token link still works. The public
+# name is declared with --trusted-host: since dsh 0.2.3 the Host/Origin fence
+# answers 403 to an undeclared authority on every route, anonymous ones
+# included, so a deployment behind a name needs it (compose.yaml documents it).
 oidc="dsh-augmented-smoke-oidc-${suffix}"
 port="$(start "${oidc}" --tmpfs /home/node/.dsh:rw,nosuid,nodev,size=256m,uid=1000,gid=1000 \
   --env DSH_OIDC_ISSUER=https://127.0.0.1:9 --env DSH_OIDC_CLIENT_ID=dsh \
   --env DSH_OIDC_CLIENT_SECRET=smoke-secret --env DSH_OIDC_PUBLIC_URL=http://dsh.smoke.test \
-  --env DSH_OIDC_ALLOWED_EMAILS=owner@example.com)"
+  --env DSH_OIDC_ALLOWED_EMAILS=owner@example.com -- --trusted-host dsh.smoke.test)"
 wait_ready "${oidc}" "${port}"
 oidc_get() { curl --silent --output /dev/null --write-out '%{http_code}' --header 'Host: dsh.smoke.test' "$@"; }
 oidc_location() { curl --silent --output /dev/null --dump-header - --header 'Host: dsh.smoke.test' "$@" | tr -d '\r' | sed -n 's/^[Ll]ocation: //p'; }
