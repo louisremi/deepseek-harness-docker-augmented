@@ -22,8 +22,8 @@ kernels without Landlock; runzhliu/deepseek-harness-docker#35) and `ungoogled`
 3. **dsh plugins** in a seed `web` profile: `@louisremi/dsh-always-on`
    (enabled: Download/Show files/Edit instead of the dead "open locally"
    buttons), `@louisremi/dsh-oidc-login` (enabled, inert until `DSH_OIDC_*`
-   is set: sign-in through an OIDC provider such as Pocket ID, minting dsh's
-   own cookie; the token link keeps working), `dshmarket`,
+   is set: sign-in at `/auth/login` through an OIDC provider such as Pocket ID,
+   with its own dsh authentication provider; dsh's own `/` sign-in keeps working), `dshmarket`,
    `dsh-plugin-subscriptions`, `@xbzbing/dsh-git-panel`,
    `dsh-plugin-chrome-controller` and `@momojie-s/dsh-workspace-mcp`
    (installed, disabled; the last two are not on npm, so they are pinned to a

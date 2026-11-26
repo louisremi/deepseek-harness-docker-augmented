@@ -110,10 +110,11 @@ No Docker here? `npm pack` the candidates (`dsh-host-authentication-token`,
   if Strict remains" assertion.
 - **Upstream now ships Lax:** the step passes on its own. Nothing to do.
 - If the move also changed the API `@louisremi/dsh-oidc-login` calls, the
-  configured-OIDC block of `smoke.sh` fails or the logs say `oidc-login:
-  disabled, this dsh lacks the connection/webServer APIs it needs`. That
-  plugin ships enabled: fix it in its own repo (it adapts to both dsh
-  generations in `src/dsh-auth.ts`, and its CI runs the e2e on the newest dsh),
+  configured-OIDC block of `smoke.sh` fails, or the logs show `oidc-login:`
+  errors or `did not activate`. The plugin registers anonymous `/auth/*`
+  routes and an `AuthenticationProvider` through `connection.authentication`,
+  and must never claim a route dsh owns (such as `/`). That plugin ships
+  enabled: fix it in its own repo (its CI runs the e2e on the newest dsh),
   release it, then bump the pin here. Never disable it here (a human
   decision).
 - A **403** there instead (e.g. `browser GET / gave 403`) is dsh's Host/Origin

@@ -509,40 +509,48 @@ fi
 pass "dsh web still boots with every bundled plugin enabled"
 
 # dsh-oidc-login ships enabled but is inert without DSH_OIDC_ISSUER: no
-# sign-in route, and / keeps dsh's own 401 even for a browser navigation.
+# sign-in route, and / keeps dsh's own 401 sign-in page.
 code="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${port}/auth/login")"
 [[ "${code}" == 404 ]] || fail "unconfigured dsh-oidc-login: GET /auth/login returned ${code}, expected 404"
 code="$(curl --silent --output /dev/null --write-out '%{http_code}' --header 'Accept: text/html' --header 'Sec-Fetch-Mode: navigate' "http://127.0.0.1:${port}/")"
 [[ "${code}" == 401 ]] || fail "unconfigured dsh-oidc-login: browser GET / returned ${code}, expected 401"
-pass "dsh-oidc-login without configuration: no /auth routes, token login only"
+pass "dsh-oidc-login without configuration: no /auth routes, dsh's own sign-in only"
 
-# Configured with an issuer that is down: browser navigations go to the
-# sign-in page (503 there, pointing at the token link); API clients and the
-# health check still get 401; the launch-token link still works. The public
-# name is declared with --trusted-host: since dsh 0.2.3 the Host/Origin fence
-# answers 403 to an undeclared authority on every route, anonymous ones
-# included, so a deployment behind a name needs it (compose.yaml documents it).
+# Configured with an issuer that is down. The plugin must leave "/" to dsh:
+# a route collision there stops dsh's remote login (QR, device pairing) from
+# loading, so no entry may fail to activate, and a browser navigation gets
+# dsh's own sign-in page (401). /auth/login answers 503 (issuer down), a forged
+# callback 403, and the launch-token link still works. The public name is
+# declared with --trusted-host: since dsh 0.2.3 the Host/Origin fence answers
+# 403 to an undeclared authority on every route, anonymous ones included, so a
+# deployment behind a name needs it (compose.yaml documents it).
 oidc="dsh-augmented-smoke-oidc-${suffix}"
 port="$(start "${oidc}" --tmpfs /home/node/.dsh:rw,nosuid,nodev,size=256m,uid=1000,gid=1000 \
   --env DSH_OIDC_ISSUER=https://127.0.0.1:9 --env DSH_OIDC_CLIENT_ID=dsh \
   --env DSH_OIDC_CLIENT_SECRET=smoke-secret --env DSH_OIDC_PUBLIC_URL=http://dsh.smoke.test \
   --env DSH_OIDC_ALLOWED_EMAILS=owner@example.com -- --trusted-host dsh.smoke.test)"
 wait_ready "${oidc}" "${port}"
+logs="$(docker logs "${oidc}" 2>&1)"
+if grep -Eq 'did not activate|duplicate exact route' <<<"${logs}"; then
+  grep -E -A2 'did not activate|duplicate exact route' <<<"${logs}" | head -n 10 >&2
+  fail "dsh-oidc-login configured: an entry did not activate (route collision with dsh?)"
+fi
 oidc_get() { curl --silent --output /dev/null --write-out '%{http_code}' --header 'Host: dsh.smoke.test' "$@"; }
-oidc_location() { curl --silent --output /dev/null --dump-header - --header 'Host: dsh.smoke.test' "$@" | tr -d '\r' | sed -n 's/^[Ll]ocation: //p'; }
-code="$(oidc_get --header 'Accept: text/html' --header 'Sec-Fetch-Mode: navigate' "http://127.0.0.1:${port}/")"
-location="$(oidc_location --header 'Accept: text/html' --header 'Sec-Fetch-Mode: navigate' "http://127.0.0.1:${port}/")"
-[[ "${code}" == 302 && "${location}" == /auth/login ]] || fail "dsh-oidc-login: browser GET / gave ${code} ${location:-<no Location>}, expected 302 /auth/login"
+page="$(curl --silent --header 'Host: dsh.smoke.test' --header 'Accept: text/html' --header 'Sec-Fetch-Mode: navigate' --write-out '\n%{http_code}' "http://127.0.0.1:${port}/")"
+code="${page##*$'\n'}"
+[[ "${code}" == 401 && "${page}" == *dsh-device-pairing* ]] || fail "dsh-oidc-login: browser GET / gave ${code}, expected 401 with dsh's own sign-in page"
 code="$(oidc_get "http://127.0.0.1:${port}/")"
 [[ "${code}" == 401 ]] || fail "dsh-oidc-login: API-style GET / gave '${code}', expected 401"
+code="$(oidc_get "http://127.0.0.1:${port}/pairing/client.js")"
+[[ "${code}" == 200 ]] || fail "dsh-oidc-login: dsh's /pairing/client.js gave '${code}', expected 200 (remote login loaded)"
 code="$(oidc_get "http://127.0.0.1:${port}/auth/login")"
 [[ "${code}" == 503 ]] || fail "dsh-oidc-login: /auth/login with the issuer down gave '${code}', expected 503"
 code="$(oidc_get "http://127.0.0.1:${port}/auth/callback?state=forged&code=x")"
 [[ "${code}" == 403 ]] || fail "dsh-oidc-login: forged callback gave '${code}', expected 403"
-token="$(docker logs "${oidc}" 2>&1 | sed -n 's#^dsh web: http://[^/]*/?token=\([^ ]*\).*#\1#p' | tail -n1)"
+token="$(sed -n 's#^dsh web: http://[^/]*/?token=\([^ ]*\).*#\1#p' <<<"${logs}" | tail -n1)"
 code="$(oidc_get "http://127.0.0.1:${port}/?token=${token}")"
 [[ "${code}" == 303 ]] || fail "dsh-oidc-login: token link gave '${code}', expected 303"
-pass "dsh-oidc-login configured: navigation -> /auth/login, API 401, provider-down 503, forged callback 403, token link 303"
+pass "dsh-oidc-login configured: all entries active, / is dsh's sign-in (401), pairing 200, provider-down 503, forged callback 403, token link 303"
 
 # --- 9. runtime: bind-mount-like empty home, and an existing profile --------
 empty="dsh-augmented-smoke-empty-${suffix}"
